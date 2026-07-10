@@ -592,89 +592,53 @@ export default function Dashboard() {
     else alert(data.error || 'Ошибка анализа');
   };
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
 
-  const periodEntries = entries.filter(e =>
-    e.entry_date >= fromDate &&
-    e.entry_date <= toDate
-  );
+  try {
+
+    const res = await fetch(
+      `/api/export/csv?from=${fromDate}&toDate=${toDate}`,
+      {
+        headers: {
+          'x-telegram-init-data': initDataRaw,
+        },
+      }
+    );
 
 
-  if (periodEntries.length === 0) {
-    alert('Нет записей за выбранный период.');
-    return;
+    if (!res.ok) {
+      const error = await res.json();
+      alert(error.error || 'Ошибка экспорта CSV');
+      return;
+    }
+
+
+    const blob = await res.blob();
+
+
+    const url = URL.createObjectURL(blob);
+
+
+    // Открываем файл вместо принудительного download
+    // чтобы Telegram Mini App не блокировал sandbox
+    window.open(url, '_blank');
+
+
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 5000);
+
+
+  } catch (error) {
+
+    console.error(
+      'CSV export error:',
+      error
+    );
+
+    alert('Не удалось экспортировать CSV');
+
   }
-
-
-  const delimiter = ';';
-
-
-  const escapeCSV = (value: any) => {
-
-    if (value === null || value === undefined) {
-      return '';
-    }
-
-    return String(value)
-      .replace(/"/g, '""')
-      .replace(/\r?\n/g, ' ')
-      .replace(/;/g, ',');
-  };
-
-
-
-  const headers = [
-    'Дата',
-    'Ситуация',
-    'Мысли',
-    'Эмоции',
-    'Реакции',
-    'Настроение'
-  ];
-
-
-
-  const rows = periodEntries.map(e => [
-
-    escapeCSV(e.entry_date),
-    escapeCSV(e.situation),
-    escapeCSV(e.thoughts),
-    escapeCSV(e.emotions),
-    escapeCSV(e.reactions),
-    escapeCSV(e.mood)
-
-  ]);
-
-
-
-  const csvContent = [
-    headers.join(delimiter),
-    ...rows.map(row =>
-      row.join(delimiter)
-    )
-  ].join('\n');
-
-
-
-  const blob = new Blob(
-    [
-      '\uFEFF' + csvContent
-    ],
-    {
-      type:
-      'text/csv;charset=utf-8;'
-    }
-  );
-
-
-
-  const url = URL.createObjectURL(blob);
-
-window.open(url, '_blank');
-
-setTimeout(() => {
-  URL.revokeObjectURL(url);
-}, 5000);
 
 };
 
