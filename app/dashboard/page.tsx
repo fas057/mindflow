@@ -386,18 +386,11 @@ error:insertError
 }=await supabaseClient
 .from('profiles')
 .insert({
-
-telegram_id:telegramId,
-
-email:null,
-
-full_name:
-`${firstName} ${lastName}`.trim(),
-
-username:username || '',
-
-role:'client'
-
+  telegram_id: telegramId,
+  email: `${telegramId}@telegram.local`,
+  full_name: fullName,
+  username: username || '',
+  role: 'client',
 })
 .select()
 .single();
