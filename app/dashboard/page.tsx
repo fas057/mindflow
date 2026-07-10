@@ -258,17 +258,27 @@ export default function Dashboard() {
   // ---------- TELEGRAM DATA ----------
   const [telegramUser, setTelegramUser] = useState<any>(null);
   const [initDataRaw, setInitDataRaw] = useState<string>('');
+  const [telegramReady, setTelegramReady] = useState<boolean>(false);
 
   useEffect(() => {
-    // Проверяем, что мы внутри Telegram WebApp
-    if (typeof window !== 'undefined' && (window as any).Telegram && (window as any).Telegram.WebApp) {
-      const webApp = (window as any).Telegram.WebApp;
-      setTelegramUser(webApp.initDataUnsafe?.user);
-      setInitDataRaw(webApp.initData);
-      webApp.ready(); // сигнализируем, что приложение загружено
-    } else {
-      // Если не в Telegram – редирект на страницу входа (или можно показать сообщение)
-      router.push('/login');
+    const checkTelegram = () => {
+      const tg = (window as any).Telegram;
+      if (tg && tg.WebApp) {
+        const webApp = tg.WebApp;
+        setTelegramUser(webApp.initDataUnsafe?.user || null);
+        setInitDataRaw(webApp.initData || '');
+        webApp.ready();
+        setTelegramReady(true);
+        return true;
+      }
+      return false;
+    };
+
+    // Проверяем сразу и через 500 мс
+    const found = checkTelegram();
+    if (!found) {
+      const timeout = setTimeout(checkTelegram, 500);
+      return () => clearTimeout(timeout);
     }
   }, []);
 
@@ -319,7 +329,12 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!telegramUser) return;
+    if (!telegramReady) return;
+    if (!telegramUser) {
+      setUserName('Гость (откройте в Telegram)');
+      return;
+    }
+
     const init = async () => {
       const profile = await fetchOrCreateProfile(telegramUser.id);
       if (profile) {
@@ -331,9 +346,9 @@ export default function Dashboard() {
       }
     };
     init();
-  }, [telegramUser, initDataRaw]);
+  }, [telegramReady, telegramUser, initDataRaw]);
 
-  // ---------- ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ----------
+  // ---------- ОСТАЛЬНЫЕ ФУНКЦИИ ----------
   const addEmotion = () => {
     if (!selectedEmotion) return;
     if (emotionList.some(e => e.name === selectedEmotion)) {
@@ -782,6 +797,32 @@ export default function Dashboard() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
+  // ---------- РЕНДЕР ----------
+  if (!telegramReady) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-lg text-gray-700">Загрузка Telegram...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!telegramUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <div className="text-center p-6 max-w-md">
+          <div className="text-6xl mb-4">📱</div>
+          <h1 className="text-2xl font-light text-gray-800 mb-2">Откройте в Telegram</h1>
+          <p className="text-gray-600">
+            Это приложение работает только внутри Telegram. Пожалуйста, откройте его через бота.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
@@ -835,7 +876,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Ситуация"
-                tooltip="Опишите конкретную ситуацию: где, когда, с кем, что произошло."
+                tooltip="Опишите конкретную ситуацию: где, когда, с кем, что произошло. Будьте конкретны."
               >
                 <textarea
                   placeholder="Ситуация"
@@ -849,7 +890,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Мысли"
-                tooltip="Запишите автоматические мысли, возникшие в этой ситуации."
+                tooltip="Запишите все автоматические мысли, которые возникли в этой ситуации."
               >
                 <textarea
                   placeholder="Мысли"
@@ -863,7 +904,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Эмоции"
-                tooltip="Добавьте эмоции и их интенсивность от 1 до 10."
+                tooltip="Добавьте эмоции, которые вы испытывали, и оцените их интенсивность от 1 до 10."
               >
                 <div className="space-y-2">
                   <div className="flex gap-2 items-center">
@@ -912,7 +953,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Реакции (поведение)"
-                tooltip="Что вы сделали в ответ на ситуацию?"
+                tooltip="Что вы сделали в ответ на ситуацию? Как вы себя вели?"
               >
                 <textarea
                   placeholder="Реакции (поведение)"
@@ -926,7 +967,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Настроение"
-                tooltip="Оцените общее настроение за день от 1 до 10."
+                tooltip="Оцените общее настроение в этот день от 1 до 10."
               >
                 <div>
                   <input
@@ -1042,7 +1083,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Кнопки анализа и экспорта */}
+            {/* Кнопки */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-[100px]">
