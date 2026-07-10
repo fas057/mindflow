@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import https from 'https';
-import { validate } from '@tma.js/init-data-node';
+import { validate, parse } from '@tma.js/init-data-node';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
@@ -12,14 +12,19 @@ let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-async function validateRequest(request: NextRequest) {
+async function validateRequest(request: NextRequest): Promise<{ valid: boolean; userId: string | null }> {
   const initData = request.headers.get('x-telegram-init-data');
-  if (!initData) return false;
+  if (!initData) return { valid: false, userId: null };
   try {
     await validate(initData, TELEGRAM_BOT_TOKEN);
-    return true;
+    const parsed = parse(initData);
+    const userId = parsed.user?.id;
+    if (!userId) {
+      return { valid: false, userId: null };
+    }
+    return { valid: true, userId: String(userId) };
   } catch {
-    return false;
+    return { valid: false, userId: null };
   }
 }
 
@@ -71,12 +76,18 @@ function extractJSON(text: string): any {
 
 export async function POST(request: NextRequest) {
   try {
-    const isValid = await validateRequest(request);
-    if (!isValid) {
+    const auth = await validateRequest(request);
+    if (!auth.valid) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { from, to, userId } = await request.json();
+    const body = await request.json();
+    const { from, to, userId } = body;
+
+    // Проверяем, что переданный userId совпадает с тем, что в initData
+    if (String(userId) !== auth.userId) {
+      return NextResponse.json({ error: 'User ID mismatch' }, { status: 403 });
+    }
 
     if (!userId) {
       return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
@@ -95,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!entries || entries.length === 0) {
-      return NextResponse.json({ error: 'Нет записей' }, { status: 400 });
+      return NextResponse.json({ error: 'Нет записей за выбранный период' }, { status: 400 });
     }
 
     const entriesText = entries.map(e =>

@@ -1,6 +1,5 @@
 'use client';
 
-import { SDKProvider } from '@tma.js/sdk-react';
 import './globals.css';
 
 export default function RootLayout({
@@ -10,11 +9,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body>
-        <SDKProvider acceptCustomStyles>
-          {children}
-        </SDKProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

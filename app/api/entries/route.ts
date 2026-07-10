@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { validate } from '@tma.js/init-data-node';
+import { validate, parse } from '@tma.js/init-data-node';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
-async function validateRequest(request: NextRequest) {
+async function validateRequest(request: NextRequest): Promise<{ valid: boolean; userId: string | null; error?: string }> {
   const initData = request.headers.get('x-telegram-init-data');
-  if (!initData) return { valid: false, error: 'Missing init data', userId: null };
+  if (!initData) {
+    return { valid: false, userId: null, error: 'Missing init data' };
+  }
   try {
-    const validated = await validate(initData, TELEGRAM_BOT_TOKEN);
-    const userId = validated.user?.id;
+    await validate(initData, TELEGRAM_BOT_TOKEN);
+    const parsed = parse(initData);
+    const userId = parsed.user?.id;
+    if (!userId) {
+      return { valid: false, userId: null, error: 'No user in init data' };
+    }
     return { valid: true, userId: String(userId) };
   } catch (e) {
-    return { valid: false, error: 'Invalid init data', userId: null };
+    console.error('Ошибка валидации initData:', e);
+    return { valid: false, userId: null, error: 'Invalid init data' };
   }
 }
 
@@ -23,15 +30,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: 401 });
   }
 
-  const userId = request.headers.get('x-user-id');
-  if (!userId) {
-    return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
-  }
-
   const { data, error } = await supabaseServer
     .from('diary_entries')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', auth.userId)
     .order('entry_date', { ascending: false });
 
   if (error) {
@@ -47,11 +49,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: 401 });
   }
 
-  const userId = request.headers.get('x-user-id');
-  if (!userId) {
-    return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
-  }
-
   const body = await request.json();
   const { entry_date, situation, thoughts, emotions_details, reactions, mood } = body;
 
@@ -65,7 +62,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabaseServer
     .from('diary_entries')
     .insert({
-      user_id: userId,
+      user_id: auth.userId,
       entry_date,
       situation,
       thoughts,
@@ -89,11 +86,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: 401 });
   }
 
-  const userId = request.headers.get('x-user-id');
-  if (!userId) {
-    return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
-  }
-
   const body = await request.json();
   const { id, entry_date, situation, thoughts, emotions_details, reactions, mood, analysis } = body;
 
@@ -105,7 +97,7 @@ export async function PATCH(request: NextRequest) {
     .from('diary_entries')
     .select('id')
     .eq('id', id)
-    .eq('user_id', userId)
+    .eq('user_id', auth.userId)
     .single();
 
   if (checkError || !existing) {
@@ -145,11 +137,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: 401 });
   }
 
-  const userId = request.headers.get('x-user-id');
-  if (!userId) {
-    return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
-  }
-
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
   if (!id) {
@@ -160,7 +147,7 @@ export async function DELETE(request: NextRequest) {
     .from('diary_entries')
     .select('id')
     .eq('id', id)
-    .eq('user_id', userId)
+    .eq('user_id', auth.userId)
     .single();
 
   if (checkError || !existing) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import https from 'https';
-import { validate } from '@tma.js/init-data-node';
+import { validate, parse } from '@tma.js/init-data-node';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const GIGACHAT_OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
@@ -11,11 +11,12 @@ let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
-async function validateRequest(request: NextRequest) {
+async function validateRequest(request: NextRequest): Promise<boolean> {
   const initData = request.headers.get('x-telegram-init-data');
   if (!initData) return false;
   try {
     await validate(initData, TELEGRAM_BOT_TOKEN);
+    const parsed = parse(initData);
     return true;
   } catch {
     return false;

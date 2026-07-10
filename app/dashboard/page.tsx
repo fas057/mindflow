@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useLaunchParams, useThemeParams } from '@tma.js/sdk-react';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import {
@@ -218,10 +217,6 @@ const getGreeting = (): string => {
 
 export default function Dashboard() {
   const router = useRouter();
-  const lp = useLaunchParams();
-  const theme = useThemeParams();
-  const telegramUser = lp?.user;
-
   const [user, setUser] = useState<any>(null);
   const [userName, setUserName] = useState<string>('');
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -260,7 +255,24 @@ export default function Dashboard() {
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  // ---------- TELEGRAM ПОЛЬЗОВАТЕЛЬ ----------
+  // ---------- TELEGRAM DATA ----------
+  const [telegramUser, setTelegramUser] = useState<any>(null);
+  const [initDataRaw, setInitDataRaw] = useState<string>('');
+
+  useEffect(() => {
+    // Проверяем, что мы внутри Telegram WebApp
+    if (typeof window !== 'undefined' && (window as any).Telegram && (window as any).Telegram.WebApp) {
+      const webApp = (window as any).Telegram.WebApp;
+      setTelegramUser(webApp.initDataUnsafe?.user);
+      setInitDataRaw(webApp.initData);
+      webApp.ready(); // сигнализируем, что приложение загружено
+    } else {
+      // Если не в Telegram – редирект на страницу входа (или можно показать сообщение)
+      router.push('/login');
+    }
+  }, []);
+
+  // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
   const fetchOrCreateProfile = async (telegramId: number) => {
     const { data: profile, error } = await supabaseClient
       .from('profiles')
@@ -269,8 +281,8 @@ export default function Dashboard() {
       .maybeSingle();
 
     if (error || !profile) {
-      const firstName = telegramUser?.firstName || 'Пользователь';
-      const lastName = telegramUser?.lastName || '';
+      const firstName = telegramUser?.first_name || 'Пользователь';
+      const lastName = telegramUser?.last_name || '';
       const username = telegramUser?.username || '';
       const fullName = `${firstName} ${lastName}`.trim() || firstName;
 
@@ -299,7 +311,7 @@ export default function Dashboard() {
     const res = await fetch('/api/entries', {
       headers: {
         'x-user-id': userId,
-        'x-telegram-init-data': lp?.initDataRaw || '',
+        'x-telegram-init-data': initDataRaw,
       },
     });
     const data = await res.json();
@@ -307,25 +319,21 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!lp || !telegramUser) {
-      router.push('/login');
-      return;
-    }
-
+    if (!telegramUser) return;
     const init = async () => {
       const profile = await fetchOrCreateProfile(telegramUser.id);
       if (profile) {
         setUser(profile);
-        setUserName(profile.full_name || telegramUser.firstName || 'Пользователь');
+        setUserName(profile.full_name || telegramUser.first_name || 'Пользователь');
         fetchEntries(profile.id);
       } else {
         setUserName('Гость');
       }
     };
     init();
-  }, [lp, telegramUser]);
+  }, [telegramUser, initDataRaw]);
 
-  // ---------- ОСТАЛЬНЫЕ ФУНКЦИИ ----------
+  // ---------- ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ----------
   const addEmotion = () => {
     if (!selectedEmotion) return;
     if (emotionList.some(e => e.name === selectedEmotion)) {
@@ -378,7 +386,7 @@ export default function Dashboard() {
       headers: {
         'Content-Type': 'application/json',
         'x-user-id': user.id,
-        'x-telegram-init-data': lp?.initDataRaw || '',
+        'x-telegram-init-data': initDataRaw,
       },
       body: JSON.stringify({
         ...form,
@@ -405,7 +413,7 @@ export default function Dashboard() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-telegram-init-data': lp?.initDataRaw || '',
+              'x-telegram-init-data': initDataRaw,
             },
             body: JSON.stringify({ text: fullText }),
           });
@@ -416,7 +424,7 @@ export default function Dashboard() {
               headers: {
                 'Content-Type': 'application/json',
                 'x-user-id': user.id,
-                'x-telegram-init-data': lp?.initDataRaw || '',
+                'x-telegram-init-data': initDataRaw,
               },
               body: JSON.stringify({ id: newEntry.id, analysis }),
             });
@@ -438,7 +446,7 @@ export default function Dashboard() {
       headers: {
         'Content-Type': 'application/json',
         'x-user-id': user.id,
-        'x-telegram-init-data': lp?.initDataRaw || '',
+        'x-telegram-init-data': initDataRaw,
       },
       body: JSON.stringify({ from: fromDate, to: toDate, userId: user.id }),
     });
@@ -670,7 +678,7 @@ export default function Dashboard() {
     pdfMake.createPdf(docDefinition).download(`КПТ-отчёт_${fromDate}_${toDate}.pdf`);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     setUser(null);
     setEntries([]);
     router.push('/');
@@ -682,7 +690,7 @@ export default function Dashboard() {
       method: 'DELETE',
       headers: {
         'x-user-id': user.id,
-        'x-telegram-init-data': lp?.initDataRaw || '',
+        'x-telegram-init-data': initDataRaw,
       },
     });
     if (res.ok) fetchEntries(user.id);
@@ -729,7 +737,7 @@ export default function Dashboard() {
       headers: {
         'Content-Type': 'application/json',
         'x-user-id': user.id,
-        'x-telegram-init-data': lp?.initDataRaw || '',
+        'x-telegram-init-data': initDataRaw,
       },
       body: JSON.stringify({
         id: editingEntry.id,
@@ -776,42 +784,33 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: theme?.bgColor || '#fff' }}>
+      <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-lg" style={{ color: theme?.textColor || '#000' }}>Загрузка профиля...</p>
+          <p className="text-lg text-gray-700">Загрузка профиля...</p>
         </div>
       </div>
     );
   }
 
   const greeting = getGreeting();
-  const bgColor = theme?.bgColor || '#ffffff';
-  const textColor = theme?.textColor || '#000000';
-  const secondaryBg = theme?.secondaryBgColor || '#f9f9f9';
-  const hintColor = theme?.hintColor || '#888888';
 
   return (
-    <div className="min-h-screen p-4 md:p-6" style={{ backgroundColor: bgColor, color: textColor }}>
+    <div className="min-h-screen bg-gray-50/50 p-4 md:p-6">
       <div className="max-w-3xl mx-auto space-y-6">
         {/* Шапка */}
         <div className="flex flex-wrap justify-between items-center gap-2">
           <div>
-            <h1 className="text-2xl md:text-3xl font-light" style={{ color: textColor }}>
+            <h1 className="text-2xl md:text-3xl font-light text-gray-800">
               🧠 Умный КПТ-дневник
             </h1>
-            <p className="text-sm mt-0.5" style={{ color: hintColor }}>
+            <p className="text-sm text-gray-500 mt-0.5">
               {greeting}, {userName || 'гость'}! 👋
             </p>
           </div>
           <button
             onClick={handleLogout}
-            className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
-            style={{
-              backgroundColor: secondaryBg,
-              color: textColor,
-              borderColor: hintColor,
-            }}
+            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors"
           >
             Выйти
           </button>
@@ -820,19 +819,14 @@ export default function Dashboard() {
         {/* Две колонки */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Левая колонка – форма */}
-          <div className="rounded-2xl shadow-sm border p-6" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
-            <h2 className="text-lg font-medium mb-4" style={{ color: textColor }}>Новая запись</h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <h2 className="text-lg font-medium text-gray-800 mb-4">Новая запись</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Дата</label>
+                <label className="text-sm font-medium text-gray-700">Дата</label>
                 <input
                   type="date"
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors"
                   value={form.entry_date}
                   onChange={e => setForm({ ...form, entry_date: e.target.value })}
                   required
@@ -845,12 +839,7 @@ export default function Dashboard() {
               >
                 <textarea
                   placeholder="Ситуация"
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
                   rows={2}
                   value={form.situation}
                   onChange={e => setForm({ ...form, situation: e.target.value })}
@@ -864,12 +853,7 @@ export default function Dashboard() {
               >
                 <textarea
                   placeholder="Мысли"
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
                   rows={2}
                   value={form.thoughts}
                   onChange={e => setForm({ ...form, thoughts: e.target.value })}
@@ -896,9 +880,8 @@ export default function Dashboard() {
                       value={emotionIntensity}
                       onChange={(e) => setEmotionIntensity(parseInt(e.target.value))}
                       className="w-20"
-                      style={{ accentColor: '#6366f1' }}
                     />
-                    <span className="text-sm min-w-[20px]" style={{ color: hintColor }}>{emotionIntensity}</span>
+                    <span className="text-sm text-gray-500 min-w-[20px]">{emotionIntensity}</span>
                     <button
                       type="button"
                       onClick={addEmotion}
@@ -921,7 +904,7 @@ export default function Dashboard() {
                       </span>
                     ))}
                     {emotionList.length === 0 && (
-                      <span className="text-sm" style={{ color: hintColor }}>Эмоции не добавлены</span>
+                      <span className="text-sm text-gray-400">Эмоции не добавлены</span>
                     )}
                   </div>
                 </div>
@@ -933,12 +916,7 @@ export default function Dashboard() {
               >
                 <textarea
                   placeholder="Реакции (поведение)"
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
                   rows={2}
                   value={form.reactions}
                   onChange={e => setForm({ ...form, reactions: e.target.value })}
@@ -958,9 +936,8 @@ export default function Dashboard() {
                     value={form.mood}
                     onChange={e => setForm({ ...form, mood: parseInt(e.target.value) })}
                     className="w-full"
-                    style={{ accentColor: '#6366f1' }}
                   />
-                  <span className="text-sm" style={{ color: hintColor }}>{form.mood}/10</span>
+                  <span className="text-sm text-gray-500">{form.mood}/10</span>
                 </div>
               </FieldWithTooltip>
 
@@ -977,33 +954,28 @@ export default function Dashboard() {
           {/* Правая колонка */}
           <div className="space-y-6">
             {/* История */}
-            <div className="rounded-2xl shadow-sm border p-6" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
-              <h2 className="text-lg font-medium mb-4" style={{ color: textColor }}>История</h2>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-medium text-gray-800 mb-4">История</h2>
               <div className="mb-4">
                 <input
                   type="text"
                   placeholder="🔍 Поиск по записям..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors"
                 />
               </div>
               <div className="max-h-60 overflow-y-auto space-y-2">
                 {filteredEntries.map((e) => (
-                  <div key={e.id} className="border-l-4 border-indigo-300 pl-3 py-2 hover:bg-gray-50 rounded-md transition-colors" style={{ borderLeftColor: '#818cf8' }}>
+                  <div key={e.id} className="border-l-4 border-indigo-300 pl-3 py-2 hover:bg-gray-50 rounded-md transition-colors">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="font-medium" style={{ color: textColor }}>{e.entry_date}</div>
-                        <div className="text-sm line-clamp-2" style={{ color: hintColor }}>{e.situation}</div>
+                        <div className="font-medium text-gray-800">{e.entry_date}</div>
+                        <div className="text-sm text-gray-600 line-clamp-2">{e.situation}</div>
                         {e.emotions_details && e.emotions_details.length > 0 && (
-                          <div className="text-xs flex flex-wrap gap-1 mt-0.5" style={{ color: hintColor }}>
+                          <div className="text-xs text-gray-400 flex flex-wrap gap-1 mt-0.5">
                             {e.emotions_details.map((em, idx) => (
-                              <span key={idx} className="bg-gray-100 px-1.5 rounded" style={{ backgroundColor: secondaryBg }}>
+                              <span key={idx} className="bg-gray-100 px-1.5 rounded">
                                 {EMOTION_EMOJI_MAP[em.name] || '🔹'} {em.name}({em.intensity})
                               </span>
                             ))}
@@ -1013,15 +985,13 @@ export default function Dashboard() {
                       <div className="flex gap-1 ml-2">
                         <button
                           onClick={() => openEditModal(e)}
-                          className="text-sm hover:text-indigo-500"
-                          style={{ color: hintColor }}
+                          className="text-gray-400 hover:text-indigo-500 text-sm"
                         >
                           ✎
                         </button>
                         <button
                           onClick={() => handleDelete(e.id)}
-                          className="text-sm hover:text-red-500"
-                          style={{ color: hintColor }}
+                          className="text-gray-400 hover:text-red-500 text-sm"
                         >
                           ✕
                         </button>
@@ -1030,7 +1000,7 @@ export default function Dashboard() {
                   </div>
                 ))}
                 {filteredEntries.length === 0 && (
-                  <p className="text-sm" style={{ color: hintColor }}>
+                  <p className="text-sm text-gray-400">
                     {searchTerm ? 'Ничего не найдено' : 'Нет записей'}
                   </p>
                 )}
@@ -1039,15 +1009,15 @@ export default function Dashboard() {
 
             {/* Топ эмоций */}
             {topEmotions.length > 0 && (
-              <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
-                <h3 className="text-lg font-medium mb-2" style={{ color: textColor }}>📊 Топ эмоций</h3>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <h3 className="text-lg font-medium text-gray-800 mb-2">📊 Топ эмоций</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {topEmotions.map((em) => (
-                    <div key={em.name} className="p-2 rounded-md" style={{ backgroundColor: bgColor }}>
-                      <div className="font-medium" style={{ color: textColor }}>
+                    <div key={em.name} className="bg-indigo-50/50 p-2 rounded-md">
+                      <div className="font-medium text-gray-800">
                         {EMOTION_EMOJI_MAP[em.name] || '🔹'} {em.name}
                       </div>
-                      <div className="text-sm" style={{ color: hintColor }}>
+                      <div className="text-sm text-gray-500">
                         {em.count} раз, ср. {em.avgIntensity}
                       </div>
                     </div>
@@ -1058,13 +1028,13 @@ export default function Dashboard() {
 
             {/* График */}
             {chartData.length > 0 && (
-              <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: hintColor }} ref={chartContainerRef}>
-                <h3 className="text-lg font-medium mb-2" style={{ color: textColor }}>📈 Динамика настроения</h3>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" ref={chartContainerRef}>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">📈 Динамика настроения</h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={hintColor} />
-                    <XAxis dataKey="date" tick={{ fill: hintColor }} />
-                    <YAxis domain={[1, 10]} tick={{ fill: hintColor }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="date" tick={{ fill: '#6b7280' }} />
+                    <YAxis domain={[1, 10]} tick={{ fill: '#6b7280' }} />
                     <Tooltip />
                     <Line type="monotone" dataKey="mood" stroke="#6366f1" strokeWidth={2} dot={{ fill: '#6366f1' }} />
                   </LineChart>
@@ -1072,35 +1042,25 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Кнопки */}
-            <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
+            {/* Кнопки анализа и экспорта */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-[100px]">
-                  <label className="block text-sm" style={{ color: hintColor }}>С</label>
+                  <label className="block text-sm text-gray-500">С</label>
                   <input
                     type="date"
                     value={fromDate}
                     onChange={e => setFromDate(e.target.value)}
-                    className="w-full px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors text-sm"
-                    style={{
-                      backgroundColor: bgColor,
-                      color: textColor,
-                      borderColor: hintColor,
-                    }}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors text-sm"
                   />
                 </div>
                 <div className="flex-1 min-w-[100px]">
-                  <label className="block text-sm" style={{ color: hintColor }}>По</label>
+                  <label className="block text-sm text-gray-500">По</label>
                   <input
                     type="date"
                     value={toDate}
                     onChange={e => setToDate(e.target.value)}
-                    className="w-full px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors text-sm"
-                    style={{
-                      backgroundColor: bgColor,
-                      color: textColor,
-                      borderColor: hintColor,
-                    }}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors text-sm"
                   />
                 </div>
                 <button
@@ -1117,12 +1077,7 @@ export default function Dashboard() {
                 </button>
                 <button
                   onClick={exportCSV}
-                  className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   📊 CSV
                 </button>
@@ -1130,8 +1085,8 @@ export default function Dashboard() {
             </div>
 
             {periodAnalysis && (
-              <div className="rounded-2xl border p-4" style={{ backgroundColor: '#eef2ff', borderColor: '#c7d2fe' }}>
-                <h3 className="font-semibold" style={{ color: textColor }}>📋 Итоговый анализ</h3>
+              <div className="bg-indigo-50/50 border border-indigo-200 rounded-2xl p-4">
+                <h3 className="font-semibold text-gray-800">📋 Итоговый анализ</h3>
                 <p className="text-sm"><span className="font-medium">Динамика:</span> {periodAnalysis.dynamics}</p>
                 <p className="text-sm"><span className="font-medium">Резюме:</span> {periodAnalysis.summary}</p>
                 <p className="text-sm"><span className="font-medium">Рекомендация:</span> {periodAnalysis.recommendation}</p>
@@ -1147,28 +1102,22 @@ export default function Dashboard() {
       {/* Модалка редактирования */}
       {editingEntry && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl" style={{ backgroundColor: bgColor }}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
             <div className="flex justify-between items-start mb-4">
-              <h2 className="text-xl font-semibold" style={{ color: textColor }}>Редактировать запись</h2>
+              <h2 className="text-xl font-semibold text-gray-800">Редактировать запись</h2>
               <button
                 onClick={closeEditModal}
-                className="text-2xl hover:text-gray-600"
-                style={{ color: hintColor }}
+                className="text-gray-400 hover:text-gray-600"
               >
                 ✕
               </button>
             </div>
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Дата</label>
+                <label className="text-sm font-medium text-gray-700">Дата</label>
                 <input
                   type="date"
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors"
                   value={editForm.entry_date}
                   onChange={e => setEditForm({ ...editForm, entry_date: e.target.value })}
                   required
@@ -1176,14 +1125,9 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Ситуация</label>
+                <label className="text-sm font-medium text-gray-700">Ситуация</label>
                 <textarea
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
                   rows={2}
                   value={editForm.situation}
                   onChange={e => setEditForm({ ...editForm, situation: e.target.value })}
@@ -1192,14 +1136,9 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Мысли</label>
+                <label className="text-sm font-medium text-gray-700">Мысли</label>
                 <textarea
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
                   rows={2}
                   value={editForm.thoughts}
                   onChange={e => setEditForm({ ...editForm, thoughts: e.target.value })}
@@ -1208,7 +1147,7 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Эмоции</label>
+                <label className="text-sm font-medium text-gray-700">Эмоции</label>
                 <div className="flex gap-2 items-center mt-1">
                   <EmotionAutocomplete
                     value={editSelectedEmotion}
@@ -1223,9 +1162,8 @@ export default function Dashboard() {
                     value={editEmotionIntensity}
                     onChange={(e) => setEditEmotionIntensity(parseInt(e.target.value))}
                     className="w-20"
-                    style={{ accentColor: '#6366f1' }}
                   />
-                  <span className="text-sm min-w-[20px]" style={{ color: hintColor }}>{editEmotionIntensity}</span>
+                  <span className="text-sm text-gray-500 min-w-[20px]">{editEmotionIntensity}</span>
                   <button
                     type="button"
                     onClick={addEditEmotion}
@@ -1248,20 +1186,15 @@ export default function Dashboard() {
                     </span>
                   ))}
                   {editEmotionList.length === 0 && (
-                    <span className="text-sm" style={{ color: hintColor }}>Эмоции не добавлены</span>
+                    <span className="text-sm text-gray-400">Эмоции не добавлены</span>
                   )}
                 </div>
               </div>
 
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Реакции (поведение)</label>
+                <label className="text-sm font-medium text-gray-700">Реакции (поведение)</label>
                 <textarea
-                  className="w-full px-4 py-2 mt-1 border rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors resize-none"
                   rows={2}
                   value={editForm.reactions}
                   onChange={e => setEditForm({ ...editForm, reactions: e.target.value })}
@@ -1270,7 +1203,7 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <label className="text-sm font-medium" style={{ color: textColor }}>Настроение: {editForm.mood}/10</label>
+                <label className="text-sm font-medium text-gray-700">Настроение: {editForm.mood}/10</label>
                 <input
                   type="range"
                   min="1"
@@ -1278,7 +1211,6 @@ export default function Dashboard() {
                   value={editForm.mood}
                   onChange={e => setEditForm({ ...editForm, mood: parseInt(e.target.value) })}
                   className="w-full"
-                  style={{ accentColor: '#6366f1' }}
                 />
               </div>
 
@@ -1293,12 +1225,7 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={closeEditModal}
-                  className="flex-1 px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
-                  style={{
-                    backgroundColor: bgColor,
-                    color: textColor,
-                    borderColor: hintColor,
-                  }}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
                   Отмена
                 </button>
