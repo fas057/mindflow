@@ -217,7 +217,9 @@ const getGreeting = (): string => {
 
 export default function Dashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+
+  // ---------- СОСТОЯНИЯ ----------
+  const [userData, setUserData] = useState<any>(null);
   const [userName, setUserName] = useState<string>('');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -261,9 +263,10 @@ export default function Dashboard() {
   const [telegramReady, setTelegramReady] = useState<boolean>(false);
   const [telegramError, setTelegramError] = useState<boolean>(false);
 
+  // ---------- ПРОВЕРКА TELEGRAM ----------
   useEffect(() => {
     let attempts = 0;
-    const maxAttempts = 15;
+    const maxAttempts = 30;
     let intervalId: NodeJS.Timeout;
 
     const checkTelegram = () => {
@@ -281,14 +284,12 @@ export default function Dashboard() {
       }
 
       if (attempts >= maxAttempts) {
-        // Проверяем параметры URL
         const urlParams = new URLSearchParams(window.location.search);
         const isTelegramWebApp = urlParams.has('tgWebAppData') || urlParams.has('tgWebAppVersion');
         setTelegramReady(true);
         if (!isTelegramWebApp) {
           setTelegramError(true);
         } else {
-          // Есть параметры, но WebApp не появился – возможно, нужно перезагрузить
           setTelegramError(true);
         }
         clearInterval(intervalId);
@@ -297,19 +298,17 @@ export default function Dashboard() {
       return false;
     };
 
-    // Проверяем сразу
     const found = checkTelegram();
     if (!found) {
-      intervalId = setInterval(checkTelegram, 400);
+      intervalId = setInterval(checkTelegram, 300);
     }
 
-    // Дополнительная проверка после загрузки
     const onLoad = () => {
       setTimeout(() => {
         if (!telegramReady) {
           checkTelegram();
         }
-      }, 800);
+      }, 500);
     };
     window.addEventListener('load', onLoad);
 
@@ -320,7 +319,7 @@ export default function Dashboard() {
   }, []);
 
   // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
-  const fetchOrCreateProfile = async (telegramId: number) => {
+  const fetchOrCreateProfile = async (telegramId: number, firstName: string, lastName: string, username: string) => {
     const { data: profile, error } = await supabaseClient
       .from('profiles')
       .select('*')
@@ -328,18 +327,14 @@ export default function Dashboard() {
       .maybeSingle();
 
     if (error || !profile) {
-      const firstName = telegramUser?.first_name || 'Пользователь';
-      const lastName = telegramUser?.last_name || '';
-      const username = telegramUser?.username || '';
-      const fullName = `${firstName} ${lastName}`.trim() || firstName;
-
+      const fullName = `${firstName} ${lastName}`.trim() || firstName || 'Пользователь';
       const { data: newProfile, error: insertError } = await supabaseClient
         .from('profiles')
         .insert({
           telegram_id: telegramId,
           email: null,
           full_name: fullName,
-          username: username,
+          username: username || '',
           role: 'client',
         })
         .select()
@@ -373,10 +368,13 @@ export default function Dashboard() {
     }
 
     const init = async () => {
-      const profile = await fetchOrCreateProfile(telegramUser.id);
+      const firstName = telegramUser.first_name || '';
+      const lastName = telegramUser.last_name || '';
+      const username = telegramUser.username || '';
+      const profile = await fetchOrCreateProfile(telegramUser.id, firstName, lastName, username);
       if (profile) {
-        setUser(profile);
-        setUserName(profile.full_name || telegramUser.first_name || 'Пользователь');
+        setUserData(profile);
+        setUserName(profile.full_name || firstName || 'Пользователь');
         fetchEntries(profile.id);
       } else {
         setUserName('Гость');
@@ -437,7 +435,7 @@ export default function Dashboard() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': user.id,
+        'x-user-id': userData.id,
         'x-telegram-init-data': initDataRaw,
       },
       body: JSON.stringify({
@@ -455,7 +453,7 @@ export default function Dashboard() {
         mood: 5,
       });
       setEmotionList([]);
-      fetchEntries(user.id);
+      fetchEntries(userData.id);
 
       if (newEntry.id) {
         const emotionText = emotionList.map(e => `${e.name} (${e.intensity}/10)`).join(', ');
@@ -475,7 +473,7 @@ export default function Dashboard() {
               method: 'PATCH',
               headers: {
                 'Content-Type': 'application/json',
-                'x-user-id': user.id,
+                'x-user-id': userData.id,
                 'x-telegram-init-data': initDataRaw,
               },
               body: JSON.stringify({ id: newEntry.id, analysis }),
@@ -497,10 +495,10 @@ export default function Dashboard() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': user.id,
+        'x-user-id': userData.id,
         'x-telegram-init-data': initDataRaw,
       },
-      body: JSON.stringify({ from: fromDate, to: toDate, userId: user.id }),
+      body: JSON.stringify({ from: fromDate, to: toDate, userId: userData.id }),
     });
     const data = await res.json();
     if (res.ok) setPeriodAnalysis(data);
@@ -731,7 +729,7 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    setUser(null);
+    setUserData(null);
     setEntries([]);
     router.push('/');
   };
@@ -741,11 +739,11 @@ export default function Dashboard() {
     const res = await fetch(`/api/entries?id=${id}`, {
       method: 'DELETE',
       headers: {
-        'x-user-id': user.id,
+        'x-user-id': userData.id,
         'x-telegram-init-data': initDataRaw,
       },
     });
-    if (res.ok) fetchEntries(user.id);
+    if (res.ok) fetchEntries(userData.id);
     else {
       const err = await res.json();
       alert(err.error || 'Ошибка удаления');
@@ -788,7 +786,7 @@ export default function Dashboard() {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': user.id,
+        'x-user-id': userData.id,
         'x-telegram-init-data': initDataRaw,
       },
       body: JSON.stringify({
@@ -799,7 +797,7 @@ export default function Dashboard() {
     });
     if (res.ok) {
       closeEditModal();
-      fetchEntries(user.id);
+      fetchEntries(userData.id);
     } else {
       const err = await res.json();
       alert(err.error || 'Ошибка обновления');
@@ -880,7 +878,7 @@ export default function Dashboard() {
     );
   }
 
-  if (!user) {
+  if (!userData) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="text-center">
@@ -914,6 +912,7 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {/* Две колонки */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Левая колонка – форма */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -1050,6 +1049,7 @@ export default function Dashboard() {
 
           {/* Правая колонка */}
           <div className="space-y-6">
+            {/* История */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-medium text-gray-800 mb-4">История</h2>
               <div className="mb-4">
@@ -1103,6 +1103,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Топ эмоций */}
             {topEmotions.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
                 <h3 className="text-lg font-medium text-gray-800 mb-2">📊 Топ эмоций</h3>
@@ -1121,6 +1122,7 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* График */}
             {chartData.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" ref={chartContainerRef}>
                 <h3 className="text-lg font-medium text-gray-800 mb-2">📈 Динамика настроения</h3>
@@ -1136,6 +1138,7 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* Кнопки */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-[100px]">
