@@ -260,19 +260,14 @@ export default function Dashboard() {
   const [initDataRaw, setInitDataRaw] = useState<string>('');
   const [telegramReady, setTelegramReady] = useState<boolean>(false);
   const [telegramError, setTelegramError] = useState<boolean>(false);
-  const [checkAttempts, setCheckAttempts] = useState<number>(0);
 
   useEffect(() => {
     let attempts = 0;
-    const maxAttempts = 5;
-    let timeoutId: NodeJS.Timeout;
-    let isCancelled = false;
+    const maxAttempts = 15;
+    let intervalId: NodeJS.Timeout;
 
     const checkTelegram = () => {
-      if (isCancelled) return;
       attempts++;
-      setCheckAttempts(attempts);
-
       const tg = (window as any).Telegram;
       if (tg && tg.WebApp) {
         const webApp = tg.WebApp;
@@ -281,47 +276,46 @@ export default function Dashboard() {
         webApp.ready();
         setTelegramReady(true);
         setTelegramError(false);
+        clearInterval(intervalId);
         return true;
       }
 
-      // Проверяем, есть ли признаки того, что мы внутри Telegram WebView
-      const urlParams = new URLSearchParams(window.location.search);
-      const isTelegramWebApp = urlParams.has('tgWebAppData') || urlParams.has('tgWebAppVersion');
-
       if (attempts >= maxAttempts) {
+        // Проверяем параметры URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const isTelegramWebApp = urlParams.has('tgWebAppData') || urlParams.has('tgWebAppVersion');
         setTelegramReady(true);
         if (!isTelegramWebApp) {
-          // Совсем не похоже на Telegram – значит, открыто в обычном браузере
           setTelegramError(true);
         } else {
-          // Похоже на Telegram, но WebApp не загрузился – попробуем ещё раз через секунду
-          setTimeout(() => {
-            if (isCancelled) return;
-            const tg2 = (window as any).Telegram;
-            if (tg2 && tg2.WebApp) {
-              const webApp = tg2.WebApp;
-              setTelegramUser(webApp.initDataUnsafe?.user || null);
-              setInitDataRaw(webApp.initData || '');
-              webApp.ready();
-              setTelegramReady(true);
-              setTelegramError(false);
-            } else {
-              setTelegramError(true);
-            }
-          }, 1000);
+          // Есть параметры, но WebApp не появился – возможно, нужно перезагрузить
+          setTelegramError(true);
         }
+        clearInterval(intervalId);
         return false;
       }
-
-      timeoutId = setTimeout(checkTelegram, 500 * attempts);
       return false;
     };
 
-    checkTelegram();
+    // Проверяем сразу
+    const found = checkTelegram();
+    if (!found) {
+      intervalId = setInterval(checkTelegram, 400);
+    }
+
+    // Дополнительная проверка после загрузки
+    const onLoad = () => {
+      setTimeout(() => {
+        if (!telegramReady) {
+          checkTelegram();
+        }
+      }, 800);
+    };
+    window.addEventListener('load', onLoad);
 
     return () => {
-      isCancelled = true;
-      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+      window.removeEventListener('load', onLoad);
     };
   }, []);
 
@@ -847,7 +841,6 @@ export default function Dashboard() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
           <p className="text-lg text-gray-700">Загрузка Telegram...</p>
-          <p className="text-sm text-gray-500">Попытка {checkAttempts} из 5</p>
         </div>
       </div>
     );
@@ -921,7 +914,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Две колонки */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Левая колонка – форма */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -1058,7 +1050,6 @@ export default function Dashboard() {
 
           {/* Правая колонка */}
           <div className="space-y-6">
-            {/* История */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-medium text-gray-800 mb-4">История</h2>
               <div className="mb-4">
@@ -1112,7 +1103,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Топ эмоций */}
             {topEmotions.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
                 <h3 className="text-lg font-medium text-gray-800 mb-2">📊 Топ эмоций</h3>
@@ -1131,7 +1121,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* График */}
             {chartData.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4" ref={chartContainerRef}>
                 <h3 className="text-lg font-medium text-gray-800 mb-2">📈 Динамика настроения</h3>
@@ -1147,7 +1136,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Кнопки */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-[100px]">
