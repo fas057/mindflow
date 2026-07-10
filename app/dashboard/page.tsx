@@ -425,16 +425,23 @@ export default function Dashboard() {
 
 
 
-  const fetchEntries = async (userId: string) => {
-    const res = await fetch('/api/entries', {
-      headers: {
-        'x-user-id': userId,
-        'x-telegram-init-data': initDataRaw,
-      },
-    });
-    const data = await res.json();
+  const fetchEntries = async () => {
+  const res = await fetch('/api/entries', {
+    headers: {
+      'x-telegram-init-data': initDataRaw,
+    },
+  });
+
+  const data = await res.json();
+
+  console.log('ENTRIES RESPONSE:', data);
+
+  if (Array.isArray(data)) {
     setEntries(data);
-  };
+  } else {
+    setEntries([]);
+  }
+};
 // ---------- TELEGRAM DATA ----------
   const [telegramUser, setTelegramUser] = useState<any>(null);
   const [initDataRaw, setInitDataRaw] = useState<string>('');
@@ -455,7 +462,7 @@ export default function Dashboard() {
       if (profile) {
         setUserData(profile);
         setUserName(profile.full_name || firstName || 'Пользователь');
-        fetchEntries(profile.id);
+        fetchEntries();
       } else {
         setUserName('Гость');
       }
@@ -533,7 +540,7 @@ export default function Dashboard() {
         mood: 5,
       });
       setEmotionList([]);
-      fetchEntries(userData.id);
+      fetchEntries();
 
       if (newEntry.id) {
         const emotionText = emotionList.map(e => `${e.name} (${e.intensity}/10)`).join(', ');
@@ -823,7 +830,7 @@ export default function Dashboard() {
         'x-telegram-init-data': initDataRaw,
       },
     });
-    if (res.ok) fetchEntries(userData.id);
+    if (res.ok) fetchEntries();
     else {
       const err = await res.json();
       alert(err.error || 'Ошибка удаления');
@@ -877,7 +884,7 @@ export default function Dashboard() {
     });
     if (res.ok) {
       closeEditModal();
-      fetchEntries(userData.id);
+      fetchEntries();
     } else {
       const err = await res.json();
       alert(err.error || 'Ошибка обновления');
