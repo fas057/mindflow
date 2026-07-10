@@ -593,59 +593,110 @@ export default function Dashboard() {
   };
 
   const exportCSV = () => {
-    const periodEntries = entries.filter(e => 
-      e.entry_date >= fromDate && e.entry_date <= toDate
-    );
-    if (periodEntries.length === 0) {
-      alert('Нет записей за выбранный период.');
-      return;
+
+  const periodEntries = entries.filter(e =>
+    e.entry_date >= fromDate &&
+    e.entry_date <= toDate
+  );
+
+
+  if (periodEntries.length === 0) {
+    alert('Нет записей за выбранный период.');
+    return;
+  }
+
+
+  const delimiter = ';';
+
+
+  const escapeCSV = (value: any) => {
+
+    if (value === null || value === undefined) {
+      return '';
     }
 
-    let maxEmotions = 0;
-    periodEntries.forEach(e => {
-      const count = e.emotions_details?.length || 0;
-      if (count > maxEmotions) maxEmotions = count;
-    });
-    const emotionColumns = Math.min(maxEmotions, 5);
-
-    const headers = ['Дата', 'Ситуация', 'Мысли', 'Реакции', 'Настроение'];
-    for (let i = 1; i <= emotionColumns; i++) {
-      headers.push(`Эмоция ${i}`, `Интенсивность ${i}`);
-    }
-
-    const rows = periodEntries.map(e => {
-      const row = [
-        e.entry_date,
-        `"${e.situation.replace(/"/g, '""')}"`,
-        `"${e.thoughts.replace(/"/g, '""')}"`,
-        `"${e.reactions.replace(/"/g, '""')}"`,
-        e.mood ?? ''
-      ];
-      const emotions = e.emotions_details || [];
-      for (let i = 0; i < emotionColumns; i++) {
-        if (i < emotions.length) {
-          row.push(`"${emotions[i].name.replace(/"/g, '""')}"`);
-          row.push(emotions[i].intensity);
-        } else {
-          row.push('', '');
-        }
-      }
-      return row;
-    });
-
-    const delimiter = ';';
-    const csvContent = [
-      headers.join(delimiter),
-      ...rows.map(row => row.join(delimiter))
-    ].join('\n');
-
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `КПТ-данные_${fromDate}_${toDate}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    return String(value)
+      .replace(/"/g, '""')
+      .replace(/\r?\n/g, ' ')
+      .replace(/;/g, ',');
   };
+
+
+
+  const headers = [
+    'Дата',
+    'Ситуация',
+    'Мысли',
+    'Эмоции',
+    'Реакции',
+    'Настроение'
+  ];
+
+
+
+  const rows = periodEntries.map(e => [
+
+    escapeCSV(e.entry_date),
+    escapeCSV(e.situation),
+    escapeCSV(e.thoughts),
+    escapeCSV(e.emotions),
+    escapeCSV(e.reactions),
+    escapeCSV(e.mood)
+
+  ]);
+
+
+
+  const csvContent = [
+    headers.join(delimiter),
+    ...rows.map(row =>
+      row.join(delimiter)
+    )
+  ].join('\n');
+
+
+
+  const blob = new Blob(
+    [
+      '\uFEFF' + csvContent
+    ],
+    {
+      type:
+      'text/csv;charset=utf-8;'
+    }
+  );
+
+
+
+  const url =
+    URL.createObjectURL(blob);
+
+
+  const link =
+    document.createElement('a');
+
+
+  link.href = url;
+
+
+  link.download =
+    `КПТ-данные_${fromDate}_${toDate}.csv`;
+
+
+  document.body.appendChild(link);
+
+  link.click();
+
+
+  document.body.removeChild(link);
+
+
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 100);
+
+};
 
   const exportPDF = async () => {
     const periodEntries = entries.filter(e => 
@@ -1252,19 +1303,19 @@ export default function Dashboard() {
                   onClick={handleAnalyzePeriod}
                   className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition-colors"
                 >
-                  📊 Анализ
+                  📊 ИИ-Анализ
                 </button>
                 <button
                   onClick={exportPDF}
                   className="px-4 py-2 text-sm font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 transition-colors"
                 >
-                  📄 PDF
+                  📄 Экспорт в PDF
                 </button>
                 <button
                   onClick={exportCSV}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 >
-                  📊 CSV
+                  📊 Экспорт в CSV
                 </button>
               </div>
             </div>
