@@ -259,9 +259,18 @@ export default function Dashboard() {
   const [telegramUser, setTelegramUser] = useState<any>(null);
   const [initDataRaw, setInitDataRaw] = useState<string>('');
   const [telegramReady, setTelegramReady] = useState<boolean>(false);
+  const [telegramError, setTelegramError] = useState<boolean>(false);
+  const [checkAttempts, setCheckAttempts] = useState<number>(0);
 
   useEffect(() => {
+    let attempts = 0;
+    const maxAttempts = 5;
+    let timeoutId: NodeJS.Timeout;
+
     const checkTelegram = () => {
+      attempts++;
+      setCheckAttempts(attempts);
+
       const tg = (window as any).Telegram;
       if (tg && tg.WebApp) {
         const webApp = tg.WebApp;
@@ -269,17 +278,31 @@ export default function Dashboard() {
         setInitDataRaw(webApp.initData || '');
         webApp.ready();
         setTelegramReady(true);
+        setTelegramError(false);
         return true;
       }
+
+      if (attempts >= maxAttempts) {
+        setTelegramError(true);
+        setTelegramReady(true); // чтобы выйти из состояния загрузки
+        return false;
+      }
+
+      // Повторяем попытку с увеличивающейся задержкой
+      timeoutId = setTimeout(checkTelegram, 300 * attempts);
       return false;
     };
 
-    // Проверяем сразу и через 500 мс
+    // Первая проверка сразу
     const found = checkTelegram();
-    if (!found) {
-      const timeout = setTimeout(checkTelegram, 500);
-      return () => clearTimeout(timeout);
+    if (!found && attempts === 0) {
+      // если первая проверка не дала результата, запускаем таймер
+      // но checkTelegram уже запустит таймер в конце, если не достигнут лимит
     }
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
@@ -804,6 +827,27 @@ export default function Dashboard() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
           <p className="text-lg text-gray-700">Загрузка Telegram...</p>
+          <p className="text-sm text-gray-500">Попытка {checkAttempts} из 5</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (telegramError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white p-4">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">📱</div>
+          <h1 className="text-2xl font-light text-gray-800 mb-2">Не удалось подключиться к Telegram</h1>
+          <p className="text-gray-600 mb-4">
+            Убедитесь, что вы открываете это приложение через бота в Telegram.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600"
+          >
+            Попробовать снова
+          </button>
         </div>
       </div>
     );
@@ -813,10 +857,10 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="text-center p-6 max-w-md">
-          <div className="text-6xl mb-4">📱</div>
-          <h1 className="text-2xl font-light text-gray-800 mb-2">Откройте в Telegram</h1>
+          <div className="text-6xl mb-4">👤</div>
+          <h1 className="text-2xl font-light text-gray-800 mb-2">Пользователь не найден</h1>
           <p className="text-gray-600">
-            Это приложение работает только внутри Telegram. Пожалуйста, откройте его через бота.
+            Не удалось получить данные пользователя из Telegram.
           </p>
         </div>
       </div>
