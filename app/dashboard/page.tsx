@@ -769,7 +769,18 @@ export default function Dashboard() {
         fontSize: 12,
       },
     };
-    pdfMake.createPdf(docDefinition).download(`КПТ-отчёт_${fromDate}_${toDate}.pdf`);
+    const pdf = pdfMake.createPdf(docDefinition);
+
+const tg = window.Telegram?.WebApp as any;
+
+if (tg?.openLink) {
+  pdf.getBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    tg.openLink(url);
+  });
+} else {
+  pdf.download(`КПТ-отчёт_${fromDate}_${toDate}.pdf`);
+}
   };
 
   const handleLogout = () => {

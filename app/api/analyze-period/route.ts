@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import https from 'https';
-import crypto from 'crypto';
 import { validate, parse } from '@tma.js/init-data-node';
 import { supabaseServer } from '@/lib/supabaseServer';
+import crypto from 'crypto';
 
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
@@ -20,14 +20,14 @@ let tokenExpiry = 0;
 
 
 const httpsAgent = new https.Agent({
-  rejectUnauthorized: false,
+  rejectUnauthorized:false
 });
 
 
 
-async function validateRequest(
-  request: NextRequest
-) {
+async function getTelegramUser(
+  request:NextRequest
+){
 
   const initData =
     request.headers.get(
@@ -35,42 +35,33 @@ async function validateRequest(
     );
 
 
-  if (!initData)
-    return null;
-
-
-  try {
-
-    await validate(
-      initData,
-      TELEGRAM_BOT_TOKEN
+  if(!initData)
+    throw new Error(
+      'Missing init data'
     );
 
 
-    const parsed =
-      parse(initData);
+  await validate(
+    initData,
+    TELEGRAM_BOT_TOKEN
+  );
 
 
-    const telegramId =
-      parsed.user?.id;
+  const parsed =
+    parse(initData);
 
 
-    if(!telegramId)
-      return null;
+  const telegramId =
+    parsed.user?.id;
 
 
-    return String(telegramId);
-
-
-  } catch(error){
-
-    console.error(
-      'Telegram validation error',
-      error
+  if(!telegramId)
+    throw new Error(
+      'Telegram user missing'
     );
 
-    return null;
-  }
+
+  return String(telegramId);
 
 }
 
@@ -91,18 +82,10 @@ async function getProfileId(
  .single();
 
 
- if(error || !data){
-
-   console.error(
-    'Profile error',
-    error
-   );
-
+ if(error || !data)
    throw new Error(
-    'Профиль пользователя не найден'
+    'Profile not found'
    );
-
- }
 
 
  return data.id;
@@ -112,19 +95,17 @@ async function getProfileId(
 
 
 
+
 async function getToken(){
 
- const now =
- Date.now();
+ const now=Date.now();
 
 
  if(
-  cachedToken &&
-  now < tokenExpiry
+   cachedToken &&
+   now < tokenExpiry
  )
- {
-  return cachedToken;
- }
+ return cachedToken;
 
 
 
@@ -137,57 +118,48 @@ async function getToken(){
 
 
 
- const scope =
- process.env.GIGACHAT_SCOPE?.trim()
- ||
- 'GIGACHAT_API_PERS';
-
-
-
  if(!clientId || !clientSecret)
- {
-  throw new Error(
-   'GigaChat credentials missing'
-  );
- }
+   throw new Error(
+    'GigaChat credentials missing'
+   );
+
+
+
+ const scope =
+ process.env.GIGACHAT_SCOPE ||
+ 'GIGACHAT_API_PERS';
 
 
 
  const response =
  await axios.post(
+  GIGACHAT_OAUTH_URL,
 
- GIGACHAT_OAUTH_URL,
+  new URLSearchParams({
+    scope
+  }).toString(),
 
- new URLSearchParams({
-   scope
- }).toString(),
+  {
 
+   headers:{
+    'Content-Type':
+    'application/x-www-form-urlencoded',
 
- {
-
- headers:{
-
-  RqUID:
-   crypto.randomUUID(),
-
-  'Content-Type':
-   'application/x-www-form-urlencoded'
-
- },
+    'RqUID':
+    crypto.randomUUID()
+   },
 
 
- auth:{
-   username:clientId,
-   password:clientSecret
- },
+   auth:{
+    username:clientId,
+    password:clientSecret
+   },
 
 
- httpsAgent
+   httpsAgent
 
- }
-
+  }
  );
-
 
 
  cachedToken =
@@ -196,7 +168,9 @@ async function getToken(){
 
  tokenExpiry =
  now +
- (response.data.expires_in-60)
+ (
+  response.data.expires_in - 60
+ )
  *1000;
 
 
@@ -204,6 +178,7 @@ async function getToken(){
  return cachedToken;
 
 }
+
 
 
 
@@ -217,14 +192,13 @@ function extractJSON(
 
 
  if(start===-1)
- {
-  throw new Error(
-   'JSON не найден'
-  );
- }
+   throw new Error(
+    'JSON not found'
+   );
 
 
  let depth=0;
+ let end=-1;
 
 
  for(
@@ -239,32 +213,34 @@ function extractJSON(
 
   if(text[i]==='}')
   {
+    depth--;
 
-   depth--;
-
-
-   if(depth===0)
-   {
-
-    return JSON.parse(
-      text.substring(
-       start,
-       i+1
-      )
-    );
-
-   }
-
+    if(depth===0)
+    {
+      end=i;
+      break;
+    }
   }
 
  }
 
 
- throw new Error(
-  'Ошибка JSON'
+
+ if(end===-1)
+   throw new Error(
+    'JSON broken'
+   );
+
+
+ return JSON.parse(
+  text.substring(
+    start,
+    end+1
+  )
  );
 
 }
+
 
 
 
@@ -274,28 +250,13 @@ export async function POST(
  request:NextRequest
 ){
 
-
 try{
 
 
  const telegramId =
- await validateRequest(
+ await getTelegramUser(
   request
  );
-
-
- if(!telegramId)
- {
-  return NextResponse.json(
-   {
-    error:'Unauthorized'
-   },
-   {
-    status:401
-   }
-  );
- }
-
 
 
  const profileId =
@@ -322,7 +283,7 @@ try{
 
   return NextResponse.json(
    {
-    error:'Не указан период'
+    error:'Period missing'
    },
    {
     status:400
@@ -333,10 +294,9 @@ try{
 
 
 
- const {
-  data:entries,
-  error
- } =
+
+ const {data:entries,error}
+ =
  await supabaseServer
  .from('diary_entries')
  .select('*')
@@ -353,33 +313,17 @@ try{
    to
  )
  .order(
-   'entry_date',
-   {
-    ascending:true
-   }
+  'entry_date',
+  {
+   ascending:true
+  }
  );
 
 
 
 
  if(error)
- {
-
-  console.error(
-   error
-  );
-
-
-  return NextResponse.json(
-   {
-    error:error.message
-   },
-   {
-    status:500
-   }
-  );
-
- }
+   throw error;
 
 
 
@@ -389,7 +333,7 @@ try{
   return NextResponse.json(
    {
     error:
-    'Нет записей за выбранный период'
+    'Нет записей за период'
    },
    {
     status:400
@@ -400,11 +344,130 @@ try{
 
 
 
- const entriesText =
- entries.map(e=>`
 
-Дата:
-${e.entry_date}
+/*
+  Считаем статистику
+*/
+
+
+const moods =
+ entries
+ .filter(e=>e.mood!==null)
+ .map(e=>e.mood);
+
+
+
+const averageMood =
+ moods.length
+ ?
+ Math.round(
+  (
+   moods.reduce(
+    (a,b)=>a+b,
+    0
+   )
+   /
+   moods.length
+  )
+  *10
+ )
+ /10
+ :
+ null;
+
+
+
+
+const emotionsMap:any={};
+
+
+
+entries.forEach(e=>{
+
+
+ if(!e.emotions_details)
+   return;
+
+
+
+ e.emotions_details.forEach(
+  (em:any)=>{
+
+
+   if(!emotionsMap[em.name])
+   {
+
+    emotionsMap[em.name]={
+     count:0,
+     totalIntensity:0
+    };
+
+   }
+
+
+
+   emotionsMap[em.name].count++;
+
+
+   emotionsMap[em.name].totalIntensity +=
+    em.intensity;
+
+
+  }
+ );
+
+
+});
+
+
+
+const topEmotions =
+Object.entries(emotionsMap)
+.map(
+ ([name,data]:any)=>({
+
+  name,
+
+  count:data.count,
+
+  avgIntensity:
+  Math.round(
+   data.totalIntensity /
+   data.count *
+   10
+  )/10
+
+ })
+)
+.sort(
+ (a,b)=>b.count-a.count
+)
+.slice(0,5);
+
+
+
+
+
+const moodChart =
+entries
+.filter(e=>e.mood!==null)
+.map(e=>({
+
+ date:e.entry_date,
+
+ mood:e.mood
+
+}));
+
+
+
+
+
+const entriesText =
+entries.map(e=>
+
+`
+Дата: ${e.entry_date}
 
 Ситуация:
 ${e.situation}
@@ -418,21 +481,20 @@ ${e.emotions}
 Реакции:
 ${e.reactions}
 
-`).join(
-'\n---\n'
-);
+`
+
+)
+.join('\n------\n');
 
 
 
 
 
- const prompt = `
+const prompt = `
 
+Ты КПТ-терапевт.
 
-Ты КПТ терапевт.
-
-Проанализируй дневниковые записи клиента.
-
+Проанализируй дневник клиента.
 
 Период:
 ${from} - ${to}
@@ -445,11 +507,10 @@ ${entriesText}
 
 Ответ только JSON:
 
-
 {
+"dynamics":"",
 "summary":"",
 "recommendation":"",
-"dynamics":"positive|negative|stable",
 "alert":false
 }
 
@@ -458,84 +519,131 @@ ${entriesText}
 
 
 
- const token =
- await getToken();
+
+const token =
+await getToken();
 
 
 
 
- const gigaResponse =
- await axios.post(
+const giga =
+await axios.post(
 
  GIGACHAT_API_URL,
 
  {
+  model:'GigaChat',
 
- model:'GigaChat',
+  messages:[
+   {
+    role:'user',
+    content:prompt
+   }
+  ],
 
- messages:[
- {
-  role:'user',
-  content:prompt
- }
- ],
+  temperature:0.3,
 
- temperature:0.3,
-
- max_tokens:800
-
+  max_tokens:800
  },
 
-
  {
+  headers:{
+   Authorization:
+   `Bearer ${token}`,
 
- headers:{
+   'Content-Type':
+   'application/json'
+  },
 
- Authorization:
- `Bearer ${token}`,
-
- 'Content-Type':
- 'application/json'
-
- },
-
- httpsAgent
-
+  httpsAgent
  }
 
+);
+
+
+
+const content =
+giga.data
+.choices?.[0]
+?.message
+?.content;
+
+
+
+if(!content)
+ throw new Error(
+  'Empty GigaChat response'
+ );
+
+
+
+const gigaAnalysis =
+extractJSON(
+ content
  );
 
 
 
 
- const content =
- gigaResponse.data
- .choices?.[0]
- ?.message
- ?.content;
+
+const reportData={
+
+ user_id:profileId,
+
+ date_from:from,
+
+ date_to:to,
+
+ entries_count:
+ entries.length,
+
+ average_mood:averageMood,
+
+ top_emotions:
+ topEmotions,
+
+ mood_chart:
+ moodChart,
+
+ giga_analysis:
+ gigaAnalysis
+
+};
 
 
 
- if(!content)
+
+
+const {data:report,error:saveError}
+=
+await supabaseServer
+.from('period_reports')
+.upsert(
+ reportData,
  {
-  throw new Error(
-   'Пустой ответ GigaChat'
-  );
+  onConflict:
+  'user_id,date_from,date_to'
  }
+)
+.select()
+.single();
 
 
 
- const analysis =
- extractJSON(
-  content
- );
+
+if(saveError)
+ throw saveError;
 
 
 
- return NextResponse.json(
-  analysis
- );
+return NextResponse.json(
+ {
+  success:true,
 
+  report
+
+ }
+);
 
 
 
@@ -549,14 +657,14 @@ catch(error:any)
  );
 
 
- return NextResponse.json(
+return NextResponse.json(
  {
   error:error.message
  },
  {
   status:500
  }
- );
+);
 
 
 }
