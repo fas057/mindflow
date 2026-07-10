@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useLaunchParams, useUser, useThemeParams } from '@telegram-apps/sdk-react';
+import { useLaunchParams, useThemeParams } from '@tma.js/sdk-react';
 import { supabaseClient } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
 import {
@@ -51,7 +51,7 @@ const FieldWithTooltip: React.FC<{ label: string; tooltip: string; children: Rea
   );
 };
 
-// ---------- КАСТОМНЫЙ АВТОКОМПЛИТ ДЛЯ ЭМОЦИЙ ----------
+// ---------- КАСТОМНЫЙ АВТОКОМПЛИТ ----------
 const EmotionAutocomplete: React.FC<{
   value: string;
   onChange: (value: string) => void;
@@ -179,7 +179,7 @@ type Entry = {
   analysis: any;
 };
 
-// ---------- КАРТА ЭМОДЗИ ДЛЯ ОТОБРАЖЕНИЯ ----------
+// ---------- КАРТА ЭМОДЗИ ----------
 const EMOTION_EMOJI_MAP: Record<string, string> = {
   радость: '😊',
   грусть: '😢',
@@ -218,6 +218,10 @@ const getGreeting = (): string => {
 
 export default function Dashboard() {
   const router = useRouter();
+  const lp = useLaunchParams();
+  const theme = useThemeParams();
+  const telegramUser = lp?.user;
+
   const [user, setUser] = useState<any>(null);
   const [userName, setUserName] = useState<string>('');
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -256,61 +260,41 @@ export default function Dashboard() {
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  // ---------- TELEGRAM SDK ----------
-  const lp = useLaunchParams();
-  const telegramUser = useUser();
-  const theme = useThemeParams();
-
-  // Определяем цвета из темы Telegram
-  const bgColor = theme?.bgColor || '#ffffff';
-  const textColor = theme?.textColor || '#000000';
-  const secondaryBg = theme?.secondaryBgColor || '#f9f9f9';
-
-  // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
+  // ---------- TELEGRAM ПОЛЬЗОВАТЕЛЬ ----------
   const fetchOrCreateProfile = async (telegramId: number) => {
-    // Ищем профиль по telegram_id
-    let { data: profile, error } = await supabaseClient
+    const { data: profile, error } = await supabaseClient
       .from('profiles')
       .select('*')
       .eq('telegram_id', telegramId)
       .maybeSingle();
 
-    if (error) {
-      console.error('Ошибка поиска профиля:', error);
-      return null;
+    if (error || !profile) {
+      const firstName = telegramUser?.firstName || 'Пользователь';
+      const lastName = telegramUser?.lastName || '';
+      const username = telegramUser?.username || '';
+      const fullName = `${firstName} ${lastName}`.trim() || firstName;
+
+      const { data: newProfile, error: insertError } = await supabaseClient
+        .from('profiles')
+        .insert({
+          telegram_id: telegramId,
+          email: null,
+          full_name: fullName,
+          username: username,
+          role: 'client',
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Ошибка создания профиля:', insertError);
+        return null;
+      }
+      return newProfile;
     }
-
-    if (profile) {
-      return profile;
-    }
-
-    // Создаём новый профиль
-    const firstName = telegramUser?.firstName || 'Пользователь';
-    const lastName = telegramUser?.lastName || '';
-    const username = telegramUser?.username || '';
-    const fullName = `${firstName} ${lastName}`.trim() || firstName;
-
-    const { data: newProfile, error: insertError } = await supabaseClient
-      .from('profiles')
-      .insert({
-        telegram_id: telegramId,
-        email: null, // не используем email
-        full_name: fullName,
-        username: username,
-        role: 'client',
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Ошибка создания профиля:', insertError);
-      return null;
-    }
-
-    return newProfile;
+    return profile;
   };
 
-  // ---------- ЗАГРУЗКА ДАННЫХ ----------
   const fetchEntries = async (userId: string) => {
     const res = await fetch('/api/entries', {
       headers: {
@@ -324,8 +308,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!lp || !telegramUser) {
-      // Если приложение открыто не в Telegram, можно показать сообщение
-      // или перенаправить на страницу входа (если осталась)
       router.push('/login');
       return;
     }
@@ -337,15 +319,13 @@ export default function Dashboard() {
         setUserName(profile.full_name || telegramUser.firstName || 'Пользователь');
         fetchEntries(profile.id);
       } else {
-        // Ошибка при создании профиля
         setUserName('Гость');
       }
     };
-
     init();
   }, [lp, telegramUser]);
 
-  // ---------- ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ----------
+  // ---------- ОСТАЛЬНЫЕ ФУНКЦИИ ----------
   const addEmotion = () => {
     if (!selectedEmotion) return;
     if (emotionList.some(e => e.name === selectedEmotion)) {
@@ -691,7 +671,6 @@ export default function Dashboard() {
   };
 
   const handleLogout = async () => {
-    // В Telegram нет выхода, но можно очистить локальное состояние и перенаправить на главную
     setUser(null);
     setEntries([]);
     router.push('/');
@@ -795,19 +774,22 @@ export default function Dashboard() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  // Если данные не загружены
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: bgColor, color: textColor }}>
+      <div className="flex items-center justify-center min-h-screen" style={{ backgroundColor: theme?.bgColor || '#fff' }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-lg">Загрузка профиля...</p>
+          <p className="text-lg" style={{ color: theme?.textColor || '#000' }}>Загрузка профиля...</p>
         </div>
       </div>
     );
   }
 
   const greeting = getGreeting();
+  const bgColor = theme?.bgColor || '#ffffff';
+  const textColor = theme?.textColor || '#000000';
+  const secondaryBg = theme?.secondaryBgColor || '#f9f9f9';
+  const hintColor = theme?.hintColor || '#888888';
 
   return (
     <div className="min-h-screen p-4 md:p-6" style={{ backgroundColor: bgColor, color: textColor }}>
@@ -818,7 +800,7 @@ export default function Dashboard() {
             <h1 className="text-2xl md:text-3xl font-light" style={{ color: textColor }}>
               🧠 Умный КПТ-дневник
             </h1>
-            <p className="text-sm mt-0.5" style={{ color: theme?.hintColor || '#888' }}>
+            <p className="text-sm mt-0.5" style={{ color: hintColor }}>
               {greeting}, {userName || 'гость'}! 👋
             </p>
           </div>
@@ -826,9 +808,9 @@ export default function Dashboard() {
             onClick={handleLogout}
             className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
             style={{
-              backgroundColor: theme?.secondaryBgColor || '#f3f4f6',
+              backgroundColor: secondaryBg,
               color: textColor,
-              borderColor: theme?.hintColor || '#d1d5db',
+              borderColor: hintColor,
             }}
           >
             Выйти
@@ -838,7 +820,7 @@ export default function Dashboard() {
         {/* Две колонки */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Левая колонка – форма */}
-          <div className="rounded-2xl shadow-sm border p-6" style={{ backgroundColor: secondaryBg, borderColor: theme?.hintColor || '#e5e7eb' }}>
+          <div className="rounded-2xl shadow-sm border p-6" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
             <h2 className="text-lg font-medium mb-4" style={{ color: textColor }}>Новая запись</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -849,7 +831,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   value={form.entry_date}
                   onChange={e => setForm({ ...form, entry_date: e.target.value })}
@@ -867,7 +849,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   rows={2}
                   value={form.situation}
@@ -886,7 +868,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   rows={2}
                   value={form.thoughts}
@@ -916,7 +898,7 @@ export default function Dashboard() {
                       className="w-20"
                       style={{ accentColor: '#6366f1' }}
                     />
-                    <span className="text-sm min-w-[20px]" style={{ color: theme?.hintColor || '#888' }}>{emotionIntensity}</span>
+                    <span className="text-sm min-w-[20px]" style={{ color: hintColor }}>{emotionIntensity}</span>
                     <button
                       type="button"
                       onClick={addEmotion}
@@ -939,7 +921,7 @@ export default function Dashboard() {
                       </span>
                     ))}
                     {emotionList.length === 0 && (
-                      <span className="text-sm" style={{ color: theme?.hintColor || '#888' }}>Эмоции не добавлены</span>
+                      <span className="text-sm" style={{ color: hintColor }}>Эмоции не добавлены</span>
                     )}
                   </div>
                 </div>
@@ -955,7 +937,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   rows={2}
                   value={form.reactions}
@@ -978,7 +960,7 @@ export default function Dashboard() {
                     className="w-full"
                     style={{ accentColor: '#6366f1' }}
                   />
-                  <span className="text-sm" style={{ color: theme?.hintColor || '#888' }}>{form.mood}/10</span>
+                  <span className="text-sm" style={{ color: hintColor }}>{form.mood}/10</span>
                 </div>
               </FieldWithTooltip>
 
@@ -995,7 +977,7 @@ export default function Dashboard() {
           {/* Правая колонка */}
           <div className="space-y-6">
             {/* История */}
-            <div className="rounded-2xl shadow-sm border p-6" style={{ backgroundColor: secondaryBg, borderColor: theme?.hintColor || '#e5e7eb' }}>
+            <div className="rounded-2xl shadow-sm border p-6" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
               <h2 className="text-lg font-medium mb-4" style={{ color: textColor }}>История</h2>
               <div className="mb-4">
                 <input
@@ -1007,7 +989,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                 />
               </div>
@@ -1017,11 +999,11 @@ export default function Dashboard() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="font-medium" style={{ color: textColor }}>{e.entry_date}</div>
-                        <div className="text-sm line-clamp-2" style={{ color: theme?.hintColor || '#888' }}>{e.situation}</div>
+                        <div className="text-sm line-clamp-2" style={{ color: hintColor }}>{e.situation}</div>
                         {e.emotions_details && e.emotions_details.length > 0 && (
-                          <div className="text-xs flex flex-wrap gap-1 mt-0.5" style={{ color: theme?.hintColor || '#aaa' }}>
+                          <div className="text-xs flex flex-wrap gap-1 mt-0.5" style={{ color: hintColor }}>
                             {e.emotions_details.map((em, idx) => (
-                              <span key={idx} className="bg-gray-100 px-1.5 rounded" style={{ backgroundColor: theme?.secondaryBgColor || '#f3f4f6' }}>
+                              <span key={idx} className="bg-gray-100 px-1.5 rounded" style={{ backgroundColor: secondaryBg }}>
                                 {EMOTION_EMOJI_MAP[em.name] || '🔹'} {em.name}({em.intensity})
                               </span>
                             ))}
@@ -1032,14 +1014,14 @@ export default function Dashboard() {
                         <button
                           onClick={() => openEditModal(e)}
                           className="text-sm hover:text-indigo-500"
-                          style={{ color: theme?.hintColor || '#888' }}
+                          style={{ color: hintColor }}
                         >
                           ✎
                         </button>
                         <button
                           onClick={() => handleDelete(e.id)}
                           className="text-sm hover:text-red-500"
-                          style={{ color: theme?.hintColor || '#888' }}
+                          style={{ color: hintColor }}
                         >
                           ✕
                         </button>
@@ -1048,7 +1030,7 @@ export default function Dashboard() {
                   </div>
                 ))}
                 {filteredEntries.length === 0 && (
-                  <p className="text-sm" style={{ color: theme?.hintColor || '#888' }}>
+                  <p className="text-sm" style={{ color: hintColor }}>
                     {searchTerm ? 'Ничего не найдено' : 'Нет записей'}
                   </p>
                 )}
@@ -1057,15 +1039,15 @@ export default function Dashboard() {
 
             {/* Топ эмоций */}
             {topEmotions.length > 0 && (
-              <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: theme?.hintColor || '#e5e7eb' }}>
+              <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
                 <h3 className="text-lg font-medium mb-2" style={{ color: textColor }}>📊 Топ эмоций</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {topEmotions.map((em) => (
-                    <div key={em.name} className="p-2 rounded-md" style={{ backgroundColor: theme?.bgColor || '#fff' }}>
+                    <div key={em.name} className="p-2 rounded-md" style={{ backgroundColor: bgColor }}>
                       <div className="font-medium" style={{ color: textColor }}>
                         {EMOTION_EMOJI_MAP[em.name] || '🔹'} {em.name}
                       </div>
-                      <div className="text-sm" style={{ color: theme?.hintColor || '#888' }}>
+                      <div className="text-sm" style={{ color: hintColor }}>
                         {em.count} раз, ср. {em.avgIntensity}
                       </div>
                     </div>
@@ -1076,13 +1058,13 @@ export default function Dashboard() {
 
             {/* График */}
             {chartData.length > 0 && (
-              <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: theme?.hintColor || '#e5e7eb' }} ref={chartContainerRef}>
+              <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: hintColor }} ref={chartContainerRef}>
                 <h3 className="text-lg font-medium mb-2" style={{ color: textColor }}>📈 Динамика настроения</h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={theme?.hintColor || '#e5e7eb'} />
-                    <XAxis dataKey="date" tick={{ fill: theme?.hintColor || '#888' }} />
-                    <YAxis domain={[1, 10]} tick={{ fill: theme?.hintColor || '#888' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={hintColor} />
+                    <XAxis dataKey="date" tick={{ fill: hintColor }} />
+                    <YAxis domain={[1, 10]} tick={{ fill: hintColor }} />
                     <Tooltip />
                     <Line type="monotone" dataKey="mood" stroke="#6366f1" strokeWidth={2} dot={{ fill: '#6366f1' }} />
                   </LineChart>
@@ -1091,10 +1073,10 @@ export default function Dashboard() {
             )}
 
             {/* Кнопки */}
-            <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: theme?.hintColor || '#e5e7eb' }}>
+            <div className="rounded-2xl shadow-sm border p-4" style={{ backgroundColor: secondaryBg, borderColor: hintColor }}>
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex-1 min-w-[100px]">
-                  <label className="block text-sm" style={{ color: theme?.hintColor || '#888' }}>С</label>
+                  <label className="block text-sm" style={{ color: hintColor }}>С</label>
                   <input
                     type="date"
                     value={fromDate}
@@ -1103,12 +1085,12 @@ export default function Dashboard() {
                     style={{
                       backgroundColor: bgColor,
                       color: textColor,
-                      borderColor: theme?.hintColor || '#d1d5db',
+                      borderColor: hintColor,
                     }}
                   />
                 </div>
                 <div className="flex-1 min-w-[100px]">
-                  <label className="block text-sm" style={{ color: theme?.hintColor || '#888' }}>По</label>
+                  <label className="block text-sm" style={{ color: hintColor }}>По</label>
                   <input
                     type="date"
                     value={toDate}
@@ -1117,7 +1099,7 @@ export default function Dashboard() {
                     style={{
                       backgroundColor: bgColor,
                       color: textColor,
-                      borderColor: theme?.hintColor || '#d1d5db',
+                      borderColor: hintColor,
                     }}
                   />
                 </div>
@@ -1139,7 +1121,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                 >
                   📊 CSV
@@ -1171,7 +1153,7 @@ export default function Dashboard() {
               <button
                 onClick={closeEditModal}
                 className="text-2xl hover:text-gray-600"
-                style={{ color: theme?.hintColor || '#888' }}
+                style={{ color: hintColor }}
               >
                 ✕
               </button>
@@ -1185,7 +1167,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   value={editForm.entry_date}
                   onChange={e => setEditForm({ ...editForm, entry_date: e.target.value })}
@@ -1200,7 +1182,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   rows={2}
                   value={editForm.situation}
@@ -1216,7 +1198,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   rows={2}
                   value={editForm.thoughts}
@@ -1243,7 +1225,7 @@ export default function Dashboard() {
                     className="w-20"
                     style={{ accentColor: '#6366f1' }}
                   />
-                  <span className="text-sm min-w-[20px]" style={{ color: theme?.hintColor || '#888' }}>{editEmotionIntensity}</span>
+                  <span className="text-sm min-w-[20px]" style={{ color: hintColor }}>{editEmotionIntensity}</span>
                   <button
                     type="button"
                     onClick={addEditEmotion}
@@ -1266,7 +1248,7 @@ export default function Dashboard() {
                     </span>
                   ))}
                   {editEmotionList.length === 0 && (
-                    <span className="text-sm" style={{ color: theme?.hintColor || '#888' }}>Эмоции не добавлены</span>
+                    <span className="text-sm" style={{ color: hintColor }}>Эмоции не добавлены</span>
                   )}
                 </div>
               </div>
@@ -1278,7 +1260,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                   rows={2}
                   value={editForm.reactions}
@@ -1315,7 +1297,7 @@ export default function Dashboard() {
                   style={{
                     backgroundColor: bgColor,
                     color: textColor,
-                    borderColor: theme?.hintColor || '#d1d5db',
+                    borderColor: hintColor,
                   }}
                 >
                   Отмена

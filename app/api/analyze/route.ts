@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import https from 'https';
-import { validate } from '@telegram-apps/init-data-node';
+import { validate } from '@tma.js/init-data-node';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const GIGACHAT_OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
@@ -70,7 +70,6 @@ function extractJSON(text: string): any {
 
 export async function POST(request: NextRequest) {
   try {
-    // Валидация Telegram
     const isValid = await validateRequest(request);
     if (!isValid) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

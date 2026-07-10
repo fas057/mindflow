@@ -1,25 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
-import { validate } from '@telegram-apps/init-data-node';
+import { validate } from '@tma.js/init-data-node';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
-// Вспомогательная функция валидации
 async function validateRequest(request: NextRequest) {
   const initData = request.headers.get('x-telegram-init-data');
-  if (!initData) {
-    return { valid: false, error: 'Missing init data', userId: null };
-  }
+  if (!initData) return { valid: false, error: 'Missing init data', userId: null };
   try {
     const validated = await validate(initData, TELEGRAM_BOT_TOKEN);
     const userId = validated.user?.id;
-    if (!userId) {
-      return { valid: false, error: 'No user in init data', userId: null };
-    }
-    // Можно также вернуть validated.user для получения username, firstName и т.д.
     return { valid: true, userId: String(userId) };
   } catch (e) {
-    console.error('Ошибка валидации initData:', e);
     return { valid: false, error: 'Invalid init data', userId: null };
   }
 }
@@ -31,14 +23,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: 401 });
   }
 
-  // Получаем userId из заголовка (это ID в вашей таблице profiles)
   const userId = request.headers.get('x-user-id');
   if (!userId) {
     return NextResponse.json({ error: 'Missing user ID' }, { status: 400 });
   }
-
-  // Дополнительно можно проверить, что telegram_id в профиле соответствует auth.userId
-  // Для простоты пропускаем.
 
   const { data, error } = await supabaseServer
     .from('diary_entries')
@@ -113,7 +101,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'ID обязателен' }, { status: 400 });
   }
 
-  // Проверяем владельца
   const { data: existing, error: checkError } = await supabaseServer
     .from('diary_entries')
     .select('id')

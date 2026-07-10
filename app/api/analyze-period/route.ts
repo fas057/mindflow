@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import https from 'https';
-import { validate } from '@telegram-apps/init-data-node';
+import { validate } from '@tma.js/init-data-node';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
@@ -24,12 +24,49 @@ async function validateRequest(request: NextRequest) {
 }
 
 async function getToken(): Promise<string> {
-  // ... (аналогично как в analyze)
-  // Используйте тот же код, что и в analyze/route.ts
+  const now = Date.now();
+  if (cachedToken && now < tokenExpiry) return cachedToken;
+
+  const clientId = process.env.GIGACHAT_CLIENT_ID?.trim() || '';
+  const clientSecret = process.env.GIGACHAT_CLIENT_SECRET?.trim() || '';
+  const scope = process.env.GIGACHAT_SCOPE?.trim() || 'GIGACHAT_API_PERS';
+
+  if (!clientId || !clientSecret) {
+    throw new Error('GigaChat credentials missing');
+  }
+
+  const response = await axios.post(
+    GIGACHAT_OAUTH_URL,
+    new URLSearchParams({ scope }).toString(),
+    {
+      headers: {
+        'RqUID': crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      auth: { username: clientId, password: clientSecret },
+      httpsAgent,
+    }
+  );
+
+  const { access_token, expires_in } = response.data;
+  cachedToken = access_token;
+  tokenExpiry = now + (expires_in - 60) * 1000;
+  return access_token;
 }
 
 function extractJSON(text: string): any {
-  // ... (аналогично)
+  const start = text.indexOf('{');
+  if (start === -1) throw new Error('Нет JSON');
+  let depth = 0, end = -1;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) throw new Error('Не найдена закрывающая скобка');
+  return JSON.parse(text.substring(start, end + 1));
 }
 
 export async function POST(request: NextRequest) {

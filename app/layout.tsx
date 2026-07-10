@@ -1,6 +1,6 @@
 'use client';
 
-import { SDKProvider } from '@telegram-apps/sdk-react';
+import { SDKProvider } from '@tma.js/sdk-react';
 import './globals.css';
 
 export default function RootLayout({
