@@ -330,97 +330,100 @@ export default function Dashboard() {
 
 
 
-  // ---------- TELEGRAM DATA ----------
-  const [telegramUser, setTelegramUser] = useState<any>(null);
-  const [initDataRaw, setInitDataRaw] = useState<string>('');
-  const [telegramReady, setTelegramReady] = useState<boolean>(false);
-  const [telegramError, setTelegramError] = useState<boolean>(false);
+  
   // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
   const fetchOrCreateProfile = async (
- telegramId:number,
- firstName:string,
- lastName:string,
- username:string
-)=>{
+  telegramId: number,
+  firstName: string,
+  lastName: string,
+  username: string
+) => {
+
+  console.log(
+    'CREATE PROFILE START',
+    telegramId
+  );
 
 
-console.log(
-'CREATE PROFILE START',
-telegramId
-);
+  const {
+    data: profile,
+    error
+  } = await supabaseClient
+    .from('profiles')
+    .select('*')
+    .eq('telegram_id', telegramId)
+    .maybeSingle();
 
 
-const {
- data:profile,
- error
-}=await supabaseClient
-.from('profiles')
-.select('*')
-.eq('telegram_id',telegramId)
-.maybeSingle();
+  console.log(
+    'PROFILE SELECT RESULT',
+    {
+      profile,
+      error
+    }
+  );
 
 
-
-console.log(
-'PROFILE SELECT RESULT',
-{
- profile,
- error
-}
-);
+  if (profile) {
+    console.log('PROFILE EXISTS');
+    return profile;
+  }
 
 
-
-if(error || !profile){
-
-
-console.log(
-'TRY INSERT PROFILE'
-);
+  const fullName =
+    `${firstName} ${lastName}`.trim() ||
+    firstName ||
+    'Пользователь';
 
 
-const {
-data:newProfile,
-error:insertError
-
-}=await supabaseClient
-.from('profiles')
-.insert({
-  telegram_id: telegramId,
-  email: `${telegramId}@telegram.local`,
-  full_name: fullName,
-  username: username || '',
-  role: 'client',
-})
-.select()
-.single();
+  console.log(
+    'TRY INSERT PROFILE',
+    {
+      telegramId,
+      fullName
+    }
+  );
 
 
-
-console.log(
-  'INSERT RESULT ERROR:',
-  insertError?.message,
-  insertError?.details,
-  insertError?.hint,
-  insertError
-);
-
-
-
-if(insertError)
-return null;
-
-
-return newProfile;
+  const {
+    data: newProfile,
+    error: insertError
+  } = await supabaseClient
+    .from('profiles')
+    .insert({
+      telegram_id: telegramId,
+      email: `${telegramId}@telegram.local`,
+      full_name: fullName,
+      username: username || '',
+      role: 'client',
+    })
+    .select()
+    .single();
 
 
-}
+  console.log(
+    'INSERT RESULT',
+    {
+      newProfile,
+      insertError
+    }
+  );
 
 
-return profile;
+  if (insertError) {
+    console.error(
+      'Ошибка создания профиля:',
+      insertError
+    );
+
+    return null;
+  }
 
 
+  return newProfile;
 };
+
+
 
   const fetchEntries = async (userId: string) => {
     const res = await fetch('/api/entries', {
@@ -432,7 +435,11 @@ return profile;
     const data = await res.json();
     setEntries(data);
   };
-
+// ---------- TELEGRAM DATA ----------
+  const [telegramUser, setTelegramUser] = useState<any>(null);
+  const [initDataRaw, setInitDataRaw] = useState<string>('');
+  const [telegramReady, setTelegramReady] = useState<boolean>(false);
+  const [telegramError, setTelegramError] = useState<boolean>(false);
   useEffect(() => {
     if (!telegramReady) return;
     if (!telegramUser) {
