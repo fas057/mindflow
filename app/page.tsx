@@ -1,65 +1,218 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+type Entry = {
+  id: string;
+  entry_date: string;
+  situation: string;
+  thoughts: string;
+  emotions: string;
+  reactions: string;
+};
+
+export default function Dashboard() {
+  const [user, setUser] = useState<any>(null);
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [form, setForm] = useState({
+    entry_date: new Date().toISOString().split('T')[0],
+    situation: '',
+    thoughts: '',
+    emotions: '',
+    reactions: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [periodAnalysis, setPeriodAnalysis] = useState<any>(null);
+  const [fromDate, setFromDate] = useState(
+    new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
+  const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      if (data.user) fetchEntries(fromDate, toDate);
+    });
+  }, []);
+
+  const fetchEntries = async (from?: string, to?: string) => {
+    if (!user) return;
+    let url = `/api/entries?`;
+    if (from) url += `from=${from}&`;
+    if (to) url += `to=${to}&`;
+    const res = await fetch(url, {
+      headers: { 'x-user-id': user.id },
+    });
+    const data = await res.json();
+    setEntries(data);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const res = await fetch('/api/entries', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': user.id,
+      },
+      body: JSON.stringify(form),
+    });
+    if (res.ok) {
+      setForm({ ...form, situation: '', thoughts: '', emotions: '', reactions: '' });
+      fetchEntries(fromDate, toDate);
+    }
+    setLoading(false);
+  };
+
+  const handleAnalyzePeriod = async () => {
+    const res = await fetch('/api/analyze-period', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': user.id },
+      body: JSON.stringify({ from: fromDate, to: toDate, userId: user.id }),
+    });
+    const data = await res.json();
+    if (res.ok) setPeriodAnalysis(data);
+    else alert(data.error || 'Ошибка анализа');
+  };
+
+  if (!user) {
+    return (
+      <div className="p-6 max-w-md mx-auto mt-20 text-center">
+        <h1 className="text-2xl font-light">Войдите в аккаунт</h1>
+        <button
+          onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })}
+          className="mt-4 bg-indigo-500 text-white px-6 py-2 rounded"
+        >
+          Войти через Google
+        </button>
+        <p className="mt-4 text-sm text-gray-500">
+          Или используйте email/пароль (добавьте форму самостоятельно)
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <div className="max-w-5xl mx-auto p-6">
+      <h1 className="text-3xl font-light mb-6">🧠 Умный КПТ-дневник</h1>
+
+      <div className="grid md:grid-cols-2 gap-8">
+        {/* Форма новой записи */}
+        <div className="bg-white p-6 rounded-xl shadow">
+          <h2 className="text-xl font-medium mb-4">Новая запись (СМЭР)</h2>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input
+              type="date"
+              className="w-full border p-2 rounded"
+              value={form.entry_date}
+              onChange={e => setForm({ ...form, entry_date: e.target.value })}
+              required
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <textarea
+              placeholder="Ситуация"
+              className="w-full border p-2 rounded"
+              rows={2}
+              value={form.situation}
+              onChange={e => setForm({ ...form, situation: e.target.value })}
+              required
+            />
+            <textarea
+              placeholder="Мысли"
+              className="w-full border p-2 rounded"
+              rows={2}
+              value={form.thoughts}
+              onChange={e => setForm({ ...form, thoughts: e.target.value })}
+              required
+            />
+            <textarea
+              placeholder="Эмоции"
+              className="w-full border p-2 rounded"
+              rows={2}
+              value={form.emotions}
+              onChange={e => setForm({ ...form, emotions: e.target.value })}
+              required
+            />
+            <textarea
+              placeholder="Реакции (поведение)"
+              className="w-full border p-2 rounded"
+              rows={2}
+              value={form.reactions}
+              onChange={e => setForm({ ...form, reactions: e.target.value })}
+              required
+            />
+            <button
+              type="submit"
+              className="w-full bg-indigo-500 text-white py-2 rounded hover:bg-indigo-600 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? 'Сохранение...' : 'Сохранить'}
+            </button>
+          </form>
         </div>
-      </main>
+
+        {/* История и анализ периода */}
+        <div>
+          <div className="bg-white p-6 rounded-xl shadow">
+            <h2 className="text-xl font-medium mb-4">История</h2>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={e => setFromDate(e.target.value)}
+                className="border p-1 rounded"
+              />
+              <span>—</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={e => setToDate(e.target.value)}
+                className="border p-1 rounded"
+              />
+              <button
+                onClick={() => fetchEntries(fromDate, toDate)}
+                className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
+              >
+                Обновить
+              </button>
+            </div>
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {entries.map(e => (
+                <div key={e.id} className="border-l-4 border-indigo-300 pl-3 py-1 text-sm">
+                  <div className="font-semibold">{e.entry_date}</div>
+                  <div className="text-gray-600 line-clamp-2">{e.situation}</div>
+                </div>
+              ))}
+              {entries.length === 0 && <p className="text-gray-400">Нет записей</p>}
+            </div>
+          </div>
+
+          <button
+            onClick={handleAnalyzePeriod}
+            className="mt-4 w-full bg-green-500 text-white py-2 rounded hover:bg-green-600"
+          >
+            📊 Анализ за период
+          </button>
+
+          {periodAnalysis && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+              <h3 className="font-bold">📋 Итоговый анализ</h3>
+              <p><span className="font-semibold">Динамика:</span> {periodAnalysis.dynamics}</p>
+              <p><span className="font-semibold">Резюме:</span> {periodAnalysis.summary}</p>
+              <p className="mt-2"><span className="font-semibold">Рекомендация:</span> {periodAnalysis.recommendation}</p>
+              {periodAnalysis.alert && (
+                <p className="mt-2 text-red-600 font-bold">⚠️ Рекомендуется обратиться к терапевту.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
