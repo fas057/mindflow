@@ -405,11 +405,11 @@ role:'client'
 
 
 console.log(
-'INSERT RESULT',
-{
-newProfile,
-insertError
-}
+  'INSERT RESULT ERROR:',
+  insertError?.message,
+  insertError?.details,
+  insertError?.hint,
+  insertError
 );
 
 
