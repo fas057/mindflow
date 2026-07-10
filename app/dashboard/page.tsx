@@ -266,8 +266,10 @@ export default function Dashboard() {
     let attempts = 0;
     const maxAttempts = 5;
     let timeoutId: NodeJS.Timeout;
+    let isCancelled = false;
 
     const checkTelegram = () => {
+      if (isCancelled) return;
       attempts++;
       setCheckAttempts(attempts);
 
@@ -282,25 +284,43 @@ export default function Dashboard() {
         return true;
       }
 
+      // Проверяем, есть ли признаки того, что мы внутри Telegram WebView
+      const urlParams = new URLSearchParams(window.location.search);
+      const isTelegramWebApp = urlParams.has('tgWebAppData') || urlParams.has('tgWebAppVersion');
+
       if (attempts >= maxAttempts) {
-        setTelegramError(true);
-        setTelegramReady(true); // чтобы выйти из состояния загрузки
+        setTelegramReady(true);
+        if (!isTelegramWebApp) {
+          // Совсем не похоже на Telegram – значит, открыто в обычном браузере
+          setTelegramError(true);
+        } else {
+          // Похоже на Telegram, но WebApp не загрузился – попробуем ещё раз через секунду
+          setTimeout(() => {
+            if (isCancelled) return;
+            const tg2 = (window as any).Telegram;
+            if (tg2 && tg2.WebApp) {
+              const webApp = tg2.WebApp;
+              setTelegramUser(webApp.initDataUnsafe?.user || null);
+              setInitDataRaw(webApp.initData || '');
+              webApp.ready();
+              setTelegramReady(true);
+              setTelegramError(false);
+            } else {
+              setTelegramError(true);
+            }
+          }, 1000);
+        }
         return false;
       }
 
-      // Повторяем попытку с увеличивающейся задержкой
-      timeoutId = setTimeout(checkTelegram, 300 * attempts);
+      timeoutId = setTimeout(checkTelegram, 500 * attempts);
       return false;
     };
 
-    // Первая проверка сразу
-    const found = checkTelegram();
-    if (!found && attempts === 0) {
-      // если первая проверка не дала результата, запускаем таймер
-      // но checkTelegram уже запустит таймер в конце, если не достигнут лимит
-    }
+    checkTelegram();
 
     return () => {
+      isCancelled = true;
       clearTimeout(timeoutId);
     };
   }, []);
@@ -920,7 +940,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Ситуация"
-                tooltip="Опишите конкретную ситуацию: где, когда, с кем, что произошло. Будьте конкретны."
+                tooltip="Опишите конкретную ситуацию: где, когда, с кем, что произошло."
               >
                 <textarea
                   placeholder="Ситуация"
@@ -934,7 +954,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Мысли"
-                tooltip="Запишите все автоматические мысли, которые возникли в этой ситуации."
+                tooltip="Запишите автоматические мысли, возникшие в этой ситуации."
               >
                 <textarea
                   placeholder="Мысли"
@@ -948,7 +968,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Эмоции"
-                tooltip="Добавьте эмоции, которые вы испытывали, и оцените их интенсивность от 1 до 10."
+                tooltip="Добавьте эмоции и их интенсивность от 1 до 10."
               >
                 <div className="space-y-2">
                   <div className="flex gap-2 items-center">
@@ -997,7 +1017,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Реакции (поведение)"
-                tooltip="Что вы сделали в ответ на ситуацию? Как вы себя вели?"
+                tooltip="Что вы сделали в ответ на ситуацию?"
               >
                 <textarea
                   placeholder="Реакции (поведение)"
@@ -1011,7 +1031,7 @@ export default function Dashboard() {
 
               <FieldWithTooltip
                 label="Настроение"
-                tooltip="Оцените общее настроение в этот день от 1 до 10."
+                tooltip="Оцените общее настроение за день от 1 до 10."
               >
                 <div>
                   <input
