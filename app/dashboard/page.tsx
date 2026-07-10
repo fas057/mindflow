@@ -266,14 +266,17 @@ export default function Dashboard() {
   // ---------- ПРОВЕРКА TELEGRAM ----------
   useEffect(() => {
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 20;
     let intervalId: NodeJS.Timeout;
 
     const checkTelegram = () => {
       attempts++;
       const tg = (window as any).Telegram;
+      console.log(`Попытка ${attempts}: window.Telegram =`, tg);
+
       if (tg && tg.WebApp) {
         const webApp = tg.WebApp;
+        console.log('WebApp найден:', webApp);
         setTelegramUser(webApp.initDataUnsafe?.user || null);
         setInitDataRaw(webApp.initData || '');
         webApp.ready();
@@ -286,29 +289,23 @@ export default function Dashboard() {
       if (attempts >= maxAttempts) {
         const urlParams = new URLSearchParams(window.location.search);
         const isTelegramWebApp = urlParams.has('tgWebAppData') || urlParams.has('tgWebAppVersion');
+        console.log('Признаки WebView:', isTelegramWebApp);
         setTelegramReady(true);
-        if (!isTelegramWebApp) {
-          setTelegramError(true);
-        } else {
-          setTelegramError(true);
-        }
+        setTelegramError(!isTelegramWebApp);
         clearInterval(intervalId);
         return false;
       }
       return false;
     };
 
+    // Первая проверка
     const found = checkTelegram();
     if (!found) {
-      intervalId = setInterval(checkTelegram, 300);
+      intervalId = setInterval(checkTelegram, 500);
     }
 
     const onLoad = () => {
-      setTimeout(() => {
-        if (!telegramReady) {
-          checkTelegram();
-        }
-      }, 500);
+      setTimeout(checkTelegram, 800);
     };
     window.addEventListener('load', onLoad);
 
@@ -852,6 +849,8 @@ export default function Dashboard() {
           <h1 className="text-2xl font-light text-gray-800 mb-2">Не удалось подключиться к Telegram</h1>
           <p className="text-gray-600 mb-4">
             Убедитесь, что вы открываете это приложение через бота в Telegram.
+            <br />
+            <span className="text-sm">(Проверьте настройки Mini App в BotFather)</span>
           </p>
           <button
             onClick={() => window.location.reload()}
