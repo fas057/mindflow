@@ -336,35 +336,98 @@ export default function Dashboard() {
   const [telegramReady, setTelegramReady] = useState<boolean>(false);
   const [telegramError, setTelegramError] = useState<boolean>(false);
   // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
-  const fetchOrCreateProfile = async (telegramId: number, firstName: string, lastName: string, username: string) => {
-    const { data: profile, error } = await supabaseClient
-      .from('profiles')
-      .select('*')
-      .eq('telegram_id', telegramId)
-      .maybeSingle();
+  const fetchOrCreateProfile = async (
+ telegramId:number,
+ firstName:string,
+ lastName:string,
+ username:string
+)=>{
 
-    if (error || !profile) {
-      const fullName = `${firstName} ${lastName}`.trim() || firstName || 'Пользователь';
-      const { data: newProfile, error: insertError } = await supabaseClient
-        .from('profiles')
-        .insert({
-          telegram_id: telegramId,
-          email: null,
-          full_name: fullName,
-          username: username || '',
-          role: 'client',
-        })
-        .select()
-        .single();
 
-      if (insertError) {
-        console.error('Ошибка создания профиля:', insertError);
-        return null;
-      }
-      return newProfile;
-    }
-    return profile;
-  };
+console.log(
+'CREATE PROFILE START',
+telegramId
+);
+
+
+const {
+ data:profile,
+ error
+}=await supabaseClient
+.from('profiles')
+.select('*')
+.eq('telegram_id',telegramId)
+.maybeSingle();
+
+
+
+console.log(
+'PROFILE SELECT RESULT',
+{
+ profile,
+ error
+}
+);
+
+
+
+if(error || !profile){
+
+
+console.log(
+'TRY INSERT PROFILE'
+);
+
+
+const {
+data:newProfile,
+error:insertError
+
+}=await supabaseClient
+.from('profiles')
+.insert({
+
+telegram_id:telegramId,
+
+email:null,
+
+full_name:
+`${firstName} ${lastName}`.trim(),
+
+username:username || '',
+
+role:'client'
+
+})
+.select()
+.single();
+
+
+
+console.log(
+'INSERT RESULT',
+{
+newProfile,
+insertError
+}
+);
+
+
+
+if(insertError)
+return null;
+
+
+return newProfile;
+
+
+}
+
+
+return profile;
+
+
+};
 
   const fetchEntries = async (userId: string) => {
     const res = await fetch('/api/entries', {
