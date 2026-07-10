@@ -256,65 +256,85 @@ export default function Dashboard() {
   const [editLoading, setEditLoading] = useState(false);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+
+  const initTelegram = () => {
+
+    try {
+
+      const tg = window.Telegram?.WebApp;
+
+
+      if (!tg) {
+        console.error(
+          'Telegram WebApp API не найден'
+        );
+
+        setTelegramError(true);
+        return;
+      }
+
+
+      tg.ready();
+
+      tg.expand();
+
+
+      console.log(
+        'Telegram initData:',
+        tg.initData
+      );
+
+
+      console.log(
+        'Telegram user:',
+        tg.initDataUnsafe?.user
+      );
+
+
+      setInitDataRaw(
+        tg.initData || ''
+      );
+
+
+      if (tg.initDataUnsafe?.user) {
+
+        setTelegramUser(
+          tg.initDataUnsafe.user
+        );
+
+      }
+
+
+      setTelegramReady(true);
+
+
+    } catch (error) {
+
+      console.error(
+        'Telegram init error:',
+        error
+      );
+
+      setTelegramError(true);
+
+    }
+
+  };
+
+
+  initTelegram();
+
+
+}, []);
+
+
 
   // ---------- TELEGRAM DATA ----------
   const [telegramUser, setTelegramUser] = useState<any>(null);
   const [initDataRaw, setInitDataRaw] = useState<string>('');
   const [telegramReady, setTelegramReady] = useState<boolean>(false);
   const [telegramError, setTelegramError] = useState<boolean>(false);
-
-  // ---------- ПРОВЕРКА TELEGRAM ----------
-  useEffect(() => {
-    let attempts = 0;
-    const maxAttempts = 20;
-    let intervalId: NodeJS.Timeout;
-
-    const checkTelegram = () => {
-      attempts++;
-      const tg = (window as any).Telegram;
-      console.log(`Попытка ${attempts}: window.Telegram =`, tg);
-
-      if (tg && tg.WebApp) {
-        const webApp = tg.WebApp;
-        console.log('WebApp найден:', webApp);
-        setTelegramUser(webApp.initDataUnsafe?.user || null);
-        setInitDataRaw(webApp.initData || '');
-        webApp.ready();
-        setTelegramReady(true);
-        setTelegramError(false);
-        clearInterval(intervalId);
-        return true;
-      }
-
-      if (attempts >= maxAttempts) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const isTelegramWebApp = urlParams.has('tgWebAppData') || urlParams.has('tgWebAppVersion');
-        console.log('Признаки WebView:', isTelegramWebApp);
-        setTelegramReady(true);
-        setTelegramError(!isTelegramWebApp);
-        clearInterval(intervalId);
-        return false;
-      }
-      return false;
-    };
-
-    // Первая проверка
-    const found = checkTelegram();
-    if (!found) {
-      intervalId = setInterval(checkTelegram, 500);
-    }
-
-    const onLoad = () => {
-      setTimeout(checkTelegram, 800);
-    };
-    window.addEventListener('load', onLoad);
-
-    return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('load', onLoad);
-    };
-  }, []);
-
   // ---------- ЗАГРУЗКА ПРОФИЛЯ ПО TELEGRAM ID ----------
   const fetchOrCreateProfile = async (telegramId: number, firstName: string, lastName: string, username: string) => {
     const { data: profile, error } = await supabaseClient

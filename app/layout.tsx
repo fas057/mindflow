@@ -1,5 +1,4 @@
-'use client';
-
+import Script from 'next/script';
 import './globals.css';
 
 export default function RootLayout({
@@ -9,7 +8,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body>
+        <Script
+          src="https://telegram.org/js/telegram-web-app.js"
+          strategy="beforeInteractive"
+        />
+
+        {children}
+      </body>
     </html>
   );
 }
