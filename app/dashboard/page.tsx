@@ -668,33 +668,13 @@ export default function Dashboard() {
 
 
 
-  const url =
-    URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
 
+window.open(url, '_blank');
 
-  const link =
-    document.createElement('a');
-
-
-  link.href = url;
-
-
-  link.download =
-    `КПТ-данные_${fromDate}_${toDate}.csv`;
-
-
-  document.body.appendChild(link);
-
-  link.click();
-
-
-  document.body.removeChild(link);
-
-
-
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-  }, 100);
+setTimeout(() => {
+  URL.revokeObjectURL(url);
+}, 5000);
 
 };
 
