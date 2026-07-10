@@ -593,53 +593,37 @@ export default function Dashboard() {
   };
 
   const exportCSV = async () => {
-
-  try {
-
-    const res = await fetch(
-      `/api/export/csv?from=${fromDate}&toDate=${toDate}`,
-      {
-        headers: {
-          'x-telegram-init-data': initDataRaw,
-        },
-      }
-    );
-
-
-    if (!res.ok) {
-      const error = await res.json();
-      alert(error.error || 'Ошибка экспорта CSV');
-      return;
-    }
-
-
-    const blob = await res.blob();
-
-
-    const url = URL.createObjectURL(blob);
-
-
-    // Открываем файл вместо принудительного download
-    // чтобы Telegram Mini App не блокировал sandbox
-    window.open(url, '_blank');
-
-
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 5000);
-
-
-  } catch (error) {
-
-    console.error(
-      'CSV export error:',
-      error
-    );
-
-    alert('Не удалось экспортировать CSV');
-
+  if (!fromDate || !toDate) {
+    alert('Выберите период');
+    return;
   }
 
+  const url = `/api/export/csv?from=${fromDate}&to=${toDate}`;
+
+  const res = await fetch(url, {
+    headers: {
+      'x-telegram-init-data': initDataRaw,
+    },
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    alert(error.error || 'Ошибка экспорта');
+    return;
+  }
+
+  const blob = await res.blob();
+
+  const fileUrl = window.URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = fileUrl;
+  a.download = `КПТ-данные_${fromDate}_${toDate}.csv`;
+  document.body.appendChild(a);
+  a.click();
+
+  a.remove();
+  window.URL.revokeObjectURL(fileUrl);
 };
 
   const exportPDF = async () => {
