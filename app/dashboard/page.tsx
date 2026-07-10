@@ -592,38 +592,16 @@ export default function Dashboard() {
     else alert(data.error || 'Ошибка анализа');
   };
 
-  const exportCSV = async () => {
-  if (!fromDate || !toDate) {
-    alert('Выберите период');
-    return;
-  }
+  const exportCSV = () => {
 
-  const url = `/api/export/csv?from=${fromDate}&to=${toDate}`;
+  const url =
+    `/api/export/csv?from=${fromDate}` +
+    `&to=${toDate}` +
+    `&initData=${encodeURIComponent(initDataRaw)}`;
 
-  const res = await fetch(url, {
-    headers: {
-      'x-telegram-init-data': initDataRaw,
-    },
-  });
 
-  if (!res.ok) {
-    const error = await res.json();
-    alert(error.error || 'Ошибка экспорта');
-    return;
-  }
+  (window.Telegram.WebApp as any).openLink(url);
 
-  const blob = await res.blob();
-
-  const fileUrl = window.URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = fileUrl;
-  a.download = `КПТ-данные_${fromDate}_${toDate}.csv`;
-  document.body.appendChild(a);
-  a.click();
-
-  a.remove();
-  window.URL.revokeObjectURL(fileUrl);
 };
 
   const exportPDF = async () => {
