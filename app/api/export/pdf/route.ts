@@ -4,7 +4,6 @@ import { supabaseServer } from '@/lib/supabaseServer';
 import { jsPDF } from 'jspdf';
 import fs from 'fs';
 import path from 'path';
-import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
@@ -63,9 +62,7 @@ export async function GET(request: NextRequest) {
       .lte('entry_date', to)
       .order('entry_date', { ascending: true });
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     const reportEntries = entries || [];
 
@@ -102,7 +99,6 @@ export async function GET(request: NextRequest) {
       .slice(0, 5);
 
     let moodTrend = 'стабильное';
-
     if (moods.length >= 2) {
       const middle = Math.ceil(moods.length / 2);
       const first = moods.slice(0, middle);
@@ -115,8 +111,7 @@ export async function GET(request: NextRequest) {
       if (firstAvg - secondAvg >= 1) moodTrend = 'ухудшение ↓';
     }
 
-    const moodChart = await generateMoodChart(reportEntries);
-
+    // Генерация PDF (без графика)
     const pdfBuffer = await generatePDF({
       entries: reportEntries,
       from,
@@ -126,10 +121,8 @@ export async function GET(request: NextRequest) {
       maxMood,
       topEmotions,
       moodTrend,
-      moodChart,
     });
 
-    // Генерируем PDF-файл, сохраняем во временное хранилище и возвращаем публичную ссылку
     const fileName = `CBT_${from}_${to}.pdf`;
     const storagePath = `exports/${crypto.randomUUID()}-${fileName}`;
 
@@ -140,9 +133,7 @@ export async function GET(request: NextRequest) {
         upsert: false,
       });
 
-    if (uploadError) {
-      throw uploadError;
-    }
+    if (uploadError) throw uploadError;
 
     const { data: urlData } = supabaseServer.storage
       .from('exports')
@@ -155,40 +146,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function generateMoodChart(entries: any[]) {
-  const width = 700;
-  const height = 300;
-  const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height });
-
-  const data = entries
-    .filter((e: any) => e.mood !== null && e.mood !== undefined)
-    .map((e: any) => ({ date: e.entry_date, mood: Number(e.mood) }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  const configuration: any = {
-    type: 'line',
-    data: {
-      labels: data.map((x) => x.date),
-      datasets: [
-        {
-          label: 'Настроение',
-          data: data.map((x) => x.mood),
-          borderWidth: 3,
-          tension: 0.3,
-          fill: false,
-        },
-      ],
-    },
-    options: {
-      responsive: false,
-      plugins: { legend: { display: true } },
-      scales: { y: { min: 1, max: 10 } },
-    },
-  };
-
-  return await chartJSNodeCanvas.renderToDataURL(configuration);
-}
-
 function generatePDF(report: {
   entries: any[];
   from: string;
@@ -198,11 +155,9 @@ function generatePDF(report: {
   maxMood: number | null;
   topEmotions: any[];
   moodTrend: string;
-  moodChart: string;
 }): Promise<Buffer> {
   return new Promise((resolve) => {
-    const { entries, from, to, averageMood, minMood, maxMood, topEmotions, moodTrend, moodChart } =
-      report;
+    const { entries, from, to, averageMood, minMood, maxMood, topEmotions, moodTrend } = report;
 
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
@@ -258,7 +213,6 @@ function generatePDF(report: {
     doc.text('Топ эмоций', 20, y);
     y += 10;
     doc.setFontSize(11);
-
     if (topEmotions.length) {
       topEmotions.forEach((em, index) => {
         addText(
@@ -267,16 +221,6 @@ function generatePDF(report: {
       });
     } else {
       addText('Эмоции не указаны');
-    }
-
-    // График
-    if (moodChart) {
-      checkPage();
-      doc.setFontSize(16);
-      doc.text('Динамика настроения', 20, y);
-      y += 10;
-      doc.addImage(moodChart, 'PNG', 20, y, 170, 70);
-      y += 85;
     }
 
     // Записи

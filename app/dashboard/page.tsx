@@ -537,111 +537,39 @@ export default function Dashboard() {
 };
 
   const exportPDF = async () => {
-
   try {
-
-
-    const tg =
-      (window as any)
-      .Telegram
-      ?.WebApp;
-
-
-
-    const initData =
-      tg?.initData;
-
-
-
-    if(!initData){
-
-      throw new Error(
-        'Telegram initData отсутствует'
-      );
-
+    // Используем сохранённый initDataRaw из состояния
+    if (!initDataRaw) {
+      throw new Error('Telegram initData отсутствует');
     }
 
+    const apiUrl = `/api/export/pdf?from=${fromDate}&to=${toDate}`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'x-telegram-init-data': initDataRaw,
+      },
+    });
 
+    const data = await response.json();
 
-
-    const apiUrl =
-      `/api/export/pdf?from=${fromDate}&to=${toDate}`;
-
-
-
-    const response =
-      await fetch(
-        apiUrl,
-        {
-
-          headers:{
-            'x-telegram-init-data':
-              initData
-          }
-
-        }
-      );
-
-
-
-    const data =
-      await response.json();
-
-
-
-    if(!response.ok){
-
-      throw new Error(
-        data.error ||
-        'Ошибка создания PDF'
-      );
-
+    if (!response.ok) {
+      throw new Error(data.error || 'Ошибка создания PDF');
     }
 
-
-
-    if(!data.url){
-
-      throw new Error(
-        'PDF ссылка отсутствует'
-      );
-
+    if (!data.url) {
+      throw new Error('PDF ссылка отсутствует');
     }
 
-
-
-    if(tg?.openLink){
-
-      tg.openLink(
-        data.url
-      );
-
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.openLink) {
+      tg.openLink(data.url);
+    } else {
+      window.open(data.url, '_blank');
     }
-    else{
-
-      window.open(
-        data.url,
-        '_blank'
-      );
-
-    }
-
-
+  } catch (error: any) {
+    console.error('PDF EXPORT ERROR', error);
+    alert(error.message);
   }
-  catch(error:any){
-
-    console.error(
-      'PDF EXPORT ERROR',
-      error
-    );
-
-
-    alert(
-      error.message
-    );
-
-  }
-
 
 };
 
