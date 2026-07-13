@@ -111,7 +111,6 @@ export async function GET(request: NextRequest) {
       if (firstAvg - secondAvg >= 1) moodTrend = 'ухудшение ↓';
     }
 
-    // Генерация PDF (без графика)
     const pdfBuffer = await generatePDF({
       entries: reportEntries,
       from,
@@ -163,6 +162,13 @@ function generatePDF(report: {
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
 
+    // Цветовая схема
+    const primaryColor: [number, number, number] = [99, 102, 241]; // индиго-500
+    const lightBg: [number, number, number] = [238, 242, 255];   // indigo-50
+    const textDark: [number, number, number] = [30, 41, 59];
+    const textGray: [number, number, number] = [100, 116, 139];
+    const white: [number, number, number] = [255, 255, 255];
+
     // Шрифт
     const fontPath = path.join(process.cwd(), 'public/fonts/DejaVuSans.ttf');
     const font = fs.readFileSync(fontPath).toString('base64');
@@ -170,79 +176,134 @@ function generatePDF(report: {
     doc.addFont('DejaVuSans.ttf', 'DejaVuSans', 'normal');
     doc.setFont('DejaVuSans');
 
-    let y = 20;
+    // Вспомогательные функции
+    const addHeader = () => {
+      // Верхняя плашка
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      doc.setFontSize(22);
+      doc.setTextColor(...white);
+      doc.text('🧠 КПТ-отчёт', pageWidth / 2, 20, { align: 'center' });
+      doc.setFontSize(11);
+      doc.text(`Период: ${from} — ${to}`, pageWidth / 2, 32, { align: 'center' });
+      doc.resetTextColor();
+    };
 
-    function addText(text: string, size = 11, x = 20) {
-      doc.setFontSize(size);
-      const lines = doc.splitTextToSize(text, pageWidth - 40);
-      doc.text(lines, x, y);
-      y += lines.length * 6 + 5;
-    }
-
-    function checkPage() {
-      if (y > pageHeight - 30) {
+    const checkPage = (neededSpace: number) => {
+      if (y + neededSpace > pageHeight - 20) {
         doc.addPage();
         y = 20;
+        addHeader();
+        y += 25;
       }
-    }
+    };
 
-    // Заголовок
-    doc.setFontSize(20);
-    doc.text('Отчёт КПТ-дневника', pageWidth / 2, y, { align: 'center' });
-    y += 12;
-    doc.setFontSize(11);
-    doc.text(`Период: ${from} — ${to}`, pageWidth / 2, y, { align: 'center' });
-    y += 15;
-    doc.line(20, y, pageWidth - 20, y);
-    y += 15;
+    const drawCard = (x: number, y: number, w: number, h: number, bgColor: [number, number, number] = white) => {
+      doc.setFillColor(...bgColor);
+      doc.roundedRect(x, y, w, h, 2, 2, 'F');
+    };
 
-    // Статистика
+    const drawProgressBar = (x: number, y: number, w: number, h: number, percent: number) => {
+      doc.setFillColor(230, 234, 242); // фон
+      doc.roundedRect(x, y, w, h, 1, 1, 'F');
+      const fillWidth = Math.max(0, (w * Math.min(percent, 1)));
+      if (fillWidth > 0) {
+        doc.setFillColor(...primaryColor);
+        doc.roundedRect(x, y, fillWidth, h, 1, 1, 'F');
+      }
+    };
+
+    addHeader();
+    let y = 50;
+
+    // --- Сводка ---
+    checkPage(60);
     doc.setFontSize(16);
-    doc.text('Общая статистика', 20, y);
-    y += 10;
-    addText(`Количество записей: ${entries.length}`);
-    addText(`Среднее настроение: ${averageMood ?? '-'} / 10`);
-    addText(`Минимальная оценка: ${minMood ?? '-'} / 10`);
-    addText(`Максимальная оценка: ${maxMood ?? '-'} / 10`);
-    addText(`Динамика настроения: ${moodTrend}`);
-    y += 5;
-
-    // Топ эмоций
-    checkPage();
-    doc.setFontSize(16);
-    doc.text('Топ эмоций', 20, y);
-    y += 10;
-    doc.setFontSize(11);
-    if (topEmotions.length) {
-      topEmotions.forEach((em, index) => {
-        addText(
-          `${index + 1}. ${em.name} — ${em.count} раз, средняя интенсивность ${em.avgIntensity}/10`
-        );
-      });
-    } else {
-      addText('Эмоции не указаны');
-    }
-
-    // Записи
-    checkPage();
-    doc.setFontSize(16);
-    doc.text('Последние записи', 20, y);
-    y += 12;
+    doc.setTextColor(...primaryColor);
+    doc.text('📊 Общая статистика', 15, y);
+    y += 8;
     doc.setFontSize(10);
+    doc.setTextColor(...textDark);
+
+    const stats = [
+      { emoji: '📝', label: 'Записей:', value: entries.length.toString() },
+      { emoji: '📈', label: 'Среднее настроение:', value: averageMood ? `${averageMood}/10` : '—' },
+      { emoji: '🔽', label: 'Минимум:', value: minMood ? `${minMood}/10` : '—' },
+      { emoji: '🔼', label: 'Максимум:', value: maxMood ? `${maxMood}/10` : '—' },
+      { emoji: moodTrend.includes('улучшение') ? '⬆️' : moodTrend.includes('ухудшение') ? '⬇️' : '➡️', label: 'Динамика:', value: moodTrend },
+    ];
+
+    stats.forEach((stat) => {
+      doc.setFillColor(245, 247, 255);
+      doc.roundedRect(15, y, 180, 10, 2, 2, 'F');
+      doc.text(`${stat.emoji} ${stat.label} ${stat.value}`, 18, y + 7);
+      y += 14;
+    });
+
+    // --- Топ эмоций ---
+    y += 5;
+    checkPage(20 + topEmotions.length * 16);
+    doc.setFontSize(16);
+    doc.setTextColor(...primaryColor);
+    doc.text('🎭 Самые частые эмоции', 15, y);
+    y += 10;
+
+    if (topEmotions.length === 0) {
+      doc.setFontSize(10);
+      doc.setTextColor(...textGray);
+      doc.text('Нет данных об эмоциях', 15, y);
+      y += 10;
+    } else {
+      topEmotions.forEach((em) => {
+        checkPage(16);
+        const maxCount = topEmotions[0]?.count || 1;
+        const percent = em.count / maxCount;
+        const emoji = getEmotionEmoji(em.name);
+        doc.setFontSize(10);
+        doc.setTextColor(...textDark);
+        doc.text(`${emoji} ${em.name}`, 15, y + 5);
+        doc.text(`${em.count} раз`, 90, y + 5);
+        doc.text(`ср. ${em.avgIntensity}/10`, 130, y + 5);
+        drawProgressBar(15, y + 8, 180, 4, percent);
+        y += 16;
+      });
+    }
+
+    // --- Записи ---
+    y += 8;
+    checkPage(30);
+    doc.setFontSize(16);
+    doc.setTextColor(...primaryColor);
+    doc.text('📋 Последние записи', 15, y);
+    y += 10;
 
     entries.slice(-15).forEach((e: any) => {
-      checkPage();
-      const emotions =
-        (e.emotions_details || [])
-          .map((em: any) => `${em.name} (${em.intensity})`)
-          .join(', ') || '-';
+      const emotionsText = (e.emotions_details || [])
+        .map((em: any) => `${getEmotionEmoji(em.name)} ${em.name}(${em.intensity})`)
+        .join(', ') || '—';
 
-      const text = `Дата: ${e.entry_date}\nСитуация:\n${e.situation || '-'}\nМысли:\n${e.thoughts || '-'}\nЭмоции:\n${emotions}\nРеакции:\n${e.reactions || '-'}\nНастроение:\n${e.mood ?? '-'}/10`;
+      const moodText = e.mood ? `${e.mood}/10` : '—';
 
-      const lines = doc.splitTextToSize(text, 160);
-      doc.roundedRect(20, y - 5, 170, lines.length * 5 + 10, 3, 3);
-      doc.text(lines, 25, y);
-      y += lines.length * 5 + 18;
+      const lines = [
+        `📅 ${e.entry_date}`,
+        `💬 Ситуация: ${e.situation || '—'}`,
+        `🧠 Мысли: ${e.thoughts || '—'}`,
+        `😌 Эмоции: ${emotionsText}`,
+        `🏃 Реакции: ${e.reactions || '—'}`,
+        `🌡️ Настроение: ${moodText}`,
+      ];
+
+      const estimatedHeight = lines.length * 8 + 12;
+      checkPage(estimatedHeight);
+
+      // Карточка записи
+      drawCard(12, y, 186, estimatedHeight, [248, 250, 252]);
+      doc.setTextColor(...textDark);
+      doc.setFontSize(9);
+      lines.forEach((line, i) => {
+        doc.text(line, 16, y + 8 + i * 8);
+      });
+      y += estimatedHeight + 4;
     });
 
     // Номера страниц
@@ -250,9 +311,22 @@ function generatePDF(report: {
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i);
       doc.setFontSize(9);
-      doc.text(`Страница ${i} из ${pages}`, pageWidth - 50, pageHeight - 10);
+      doc.setTextColor(...textGray);
+      doc.text(`Страница ${i} из ${pages}`, pageWidth - 40, pageHeight - 10, { align: 'right' });
     }
 
     resolve(Buffer.from(doc.output('arraybuffer')));
   });
+}
+
+// Вспомогательная функция для иконок эмоций (можно расширить)
+function getEmotionEmoji(name: string): string {
+  const map: Record<string, string> = {
+    радость: '😊', грусть: '😢', гнев: '😠', страх: '😨', удивление: '😲',
+    отвращение: '🤢', спокойствие: '😌', тревога: '😰', вина: '😔', стыд: '😳',
+    обида: '😤', злость: '🤬', раздражение: '😒', восторг: '🤩', любовь: '❤️',
+    благодарность: '🙏', надежда: '🌟', уныние: '😞', апатия: '😐', интерес: '🤔',
+    скука: '🥱', нежность: '🥰', гордость: '😎', печаль: '😥',
+  };
+  return map[name] || '🔹';
 }
