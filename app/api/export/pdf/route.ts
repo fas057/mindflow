@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validate, parse } from '@tma.js/init-data-node';
 import { supabaseServer } from '@/lib/supabaseServer';
-import PDFDocument from 'pdfkit';
+import { jsPDF } from 'jspdf';
 
 
 const TELEGRAM_BOT_TOKEN =
@@ -296,101 +296,75 @@ catch(error:any){
 
 
 function generatePDF(
- entries:any[],
- from:string,
- to:string
+  entries:any[],
+  from:string,
+  to:string
 ):Promise<Buffer>{
 
 
- return new Promise(
- (resolve,reject)=>{
-
-
- const chunks:Buffer[]=[];
-
+ return new Promise((resolve)=>{
 
 
  const doc =
- new PDFDocument({
-  size:'A4',
-  margin:40
- });
+ new jsPDF();
 
 
 
- doc.on(
-  'data',
-  (chunk)=>{
-    chunks.push(chunk);
-  }
- );
-
-
- doc.on(
-  'end',
-  ()=>{
-
-   resolve(
-    Buffer.concat(chunks)
-   );
-
-  }
- );
-
-
- doc.on(
-  'error',
-  reject
- );
+ let y = 20;
 
 
 
+ doc.setFontSize(18);
 
-
- doc
- .fontSize(18)
- .text(
+ doc.text(
   'Отчёт КПТ-дневника',
-  {
-   align:'center'
-  }
+  20,
+  y
  );
 
 
-
- doc.moveDown();
-
+ y += 15;
 
 
- doc
- .fontSize(12)
- .text(
-  `Период: ${from} — ${to}`
- );
-
+ doc.setFontSize(12);
 
 
  doc.text(
-  `Количество записей: ${entries.length}`
+  `Период: ${from} — ${to}`,
+  20,
+  y
  );
 
 
-
- doc.moveDown();
-
+ y += 10;
 
 
- doc
- .fontSize(15)
- .text(
-  'Последние записи'
+ doc.text(
+  `Количество записей: ${entries.length}`,
+  20,
+  y
  );
 
 
+ y += 15;
 
- doc.moveDown();
 
 
+ doc.setFontSize(14);
+
+
+ doc.text(
+  'Последние записи',
+  20,
+  y
+ );
+
+
+ y += 10;
+
+
+
+ doc.setFontSize(10);
 
 
 
@@ -400,9 +374,17 @@ function generatePDF(
  (e:any)=>{
 
 
- doc
- .fontSize(11)
- .text(
+ if(y > 270){
+
+   doc.addPage();
+
+   y = 20;
+
+ }
+
+
+
+ const text =
  `
 Дата: ${e.entry_date}
 
@@ -421,18 +403,43 @@ ${e.reactions || '-'}
 Настроение:
 ${e.mood ?? '-'}
 
--------------------------
- `
+-----------------
+ `;
+
+
+
+ const lines =
+ doc.splitTextToSize(
+  text,
+  170
  );
 
 
- }
+ doc.text(
+  lines,
+  20,
+  y
  );
 
 
+ y +=
+ lines.length * 5;
 
 
- doc.end();
+
+ });
+
+
+
+ const arrayBuffer =
+ doc.output(
+  'arraybuffer'
+ );
+
+
+ resolve(
+  Buffer.from(arrayBuffer)
+ );
 
 
  });
