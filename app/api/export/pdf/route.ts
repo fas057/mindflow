@@ -122,15 +122,25 @@ export async function GET(request: NextRequest) {
       moodTrend,
     });
 
-    // Возвращаем PDF напрямую
+    // Сохраняем PDF в Supabase Storage (как CSV)
     const fileName = `CBT_${from}_${to}.pdf`;
-    return new NextResponse(new Uint8Array(pdfBuffer), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
-        'Cache-Control': 'no-cache',
-      },
-    });
+    const storagePath = `exports/${crypto.randomUUID()}-${fileName}`;
+
+    const { error: uploadError } = await supabaseServer.storage
+      .from('exports')
+      .upload(storagePath, pdfBuffer, {
+        contentType: 'application/pdf',
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = supabaseServer.storage
+      .from('exports')
+      .getPublicUrl(storagePath);
+
+    // Возвращаем URL в JSON (точно как CSV)
+    return NextResponse.json({ url: urlData.publicUrl }, { status: 200 });
   } catch (error: any) {
     console.error('PDF EXPORT ERROR', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

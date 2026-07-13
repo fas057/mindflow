@@ -549,26 +549,26 @@ export default function Dashboard() {
       },
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Ошибка создания PDF' }));
-      throw new Error(errorData.error || 'Ошибка создания PDF');
+      throw new Error(data.error || 'Ошибка создания PDF');
     }
 
-    // Получаем PDF напрямую как Blob
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = `CBT_${fromDate}_${toDate}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(blobUrl);
+    if (!data.url) {
+      throw new Error('PDF ссылка отсутствует');
+    }
+
+    const tg = (window as any).Telegram?.WebApp;
+    if (tg?.openLink) {
+      tg.openLink(data.url);
+    } else {
+      window.open(data.url, '_blank');
+    }
   } catch (error: any) {
     console.error('PDF EXPORT ERROR', error);
     alert(error.message);
   }
-
 };
 
   const chartData = entries
