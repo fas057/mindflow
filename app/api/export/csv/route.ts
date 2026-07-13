@@ -7,20 +7,23 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
 async function getTelegramUser(request: NextRequest) {
 
-  const { searchParams } = new URL(request.url);
+  const { searchParams } =
+    new URL(request.url);
+
 
   const initData =
- request.headers.get(
-  'x-telegram-init-data'
-) ||
-new URL(request.url)
-.searchParams.get(
-  'initData'
-);
+    request.headers.get(
+      'x-telegram-init-data'
+    ) ||
+    searchParams.get(
+      'initData'
+    );
 
 
   if (!initData) {
-    throw new Error('Missing init data');
+    throw new Error(
+      'Missing init data'
+    );
   }
 
 
@@ -30,18 +33,23 @@ new URL(request.url)
   );
 
 
-  const parsed = parse(initData);
+  const parsed =
+    parse(initData);
+
 
   const telegramId =
     parsed.user?.id;
 
 
   if (!telegramId) {
-    throw new Error('User not found');
+    throw new Error(
+      'User not found'
+    );
   }
 
 
   return String(telegramId);
+
 }
 
 
@@ -50,7 +58,10 @@ async function getProfileId(
   telegramId: string
 ) {
 
-  const { data, error } =
+  const {
+    data,
+    error
+  } =
     await supabaseServer
       .from('profiles')
       .select('id')
@@ -62,23 +73,29 @@ async function getProfileId(
 
 
   if (error || !data) {
+
     console.error(
       'PROFILE ERROR',
       error
     );
 
+
     throw new Error(
       'Profile not found'
     );
+
   }
 
 
   return data.id;
+
 }
 
 
 
-function escapeCSV(value: any) {
+function escapeCSV(
+  value: any
+) {
 
   if (
     value === null ||
@@ -89,11 +106,18 @@ function escapeCSV(value: any) {
 
 
   return `"${String(value)
-    .replace(/"/g, '""')
-    .replace(/\r?\n/g, ' ')
+    .replace(
+      /"/g,
+      '""'
+    )
+    .replace(
+      /\r?\n/g,
+      ' '
+    )
   }"`;
 
 }
+
 
 
 
@@ -116,18 +140,25 @@ export async function GET(
       );
 
 
-    const { searchParams } =
+
+    const {
+      searchParams
+    } =
       new URL(
         request.url
       );
 
 
     const from =
-      searchParams.get('from');
+      searchParams.get(
+        'from'
+      );
 
 
     const to =
-      searchParams.get('to');
+      searchParams.get(
+        'to'
+      );
 
 
 
@@ -135,17 +166,23 @@ export async function GET(
 
       return NextResponse.json(
         {
-          error: 'Period missing'
+          error:
+            'Period missing'
         },
         {
           status:400
         }
       );
+
     }
 
 
 
-    const { data: entries, error } =
+
+    const {
+      data: entries,
+      error
+    } =
       await supabaseServer
         .from('diary_entries')
         .select('*')
@@ -176,6 +213,7 @@ export async function GET(
 
 
 
+
     const headers = [
       'Дата',
       'Ситуация',
@@ -193,14 +231,23 @@ export async function GET(
           e.entry_date,
           e.situation,
           e.thoughts,
-          e.emotions,
+          e.emotions_details
+            ?.map(
+              (em:any)=>
+                `${em.name}(${em.intensity})`
+            )
+            .join(', ') ||
+            '',
           e.reactions,
           e.mood
 
         ]
-        .map(escapeCSV)
+        .map(
+          escapeCSV
+        )
         .join(';')
       );
+
 
 
 
@@ -213,29 +260,78 @@ export async function GET(
 
 
 
-    return new NextResponse(
-      '\uFEFF' + csv,
+
+    const fileName =
+      `CBT_${from}_${to}.csv`;
+
+
+
+    const storagePath =
+      `exports/${crypto.randomUUID()}-${fileName}`;
+
+
+
+
+    const {
+      error: uploadError
+    } =
+      await supabaseServer
+        .storage
+        .from('exports')
+        .upload(
+          storagePath,
+          Buffer.from(
+            '\uFEFF' + csv,
+            'utf8'
+          ),
+          {
+            contentType:
+              'text/csv; charset=utf-8',
+            upsert:false
+          }
+        );
+
+
+
+    if(uploadError) {
+
+      console.error(
+        'STORAGE UPLOAD ERROR',
+        uploadError
+      );
+
+
+      throw uploadError;
+
+    }
+
+
+
+
+    const {
+      data:urlData
+    } =
+      supabaseServer
+        .storage
+        .from('exports')
+        .getPublicUrl(
+          storagePath
+        );
+
+
+
+
+
+    return NextResponse.json(
       {
-
-        status:200,
-
-        headers:{
-
-          'Content-Type':
-            'text/csv; charset=utf-8',
-
-
-          'Content-Disposition':
-            `attachment; filename="CBT_${from}_${to}.csv`,
-
-
-          'Cache-Control':
-            'no-store'
-
-        }
-
+        url:
+          urlData.publicUrl
+      },
+      {
+        status:200
       }
     );
+
 
 
   }
@@ -248,9 +344,11 @@ export async function GET(
     );
 
 
+
     return NextResponse.json(
       {
-        error:error.message
+        error:
+          error.message
       },
       {
         status:500

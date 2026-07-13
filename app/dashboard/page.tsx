@@ -511,15 +511,28 @@ export default function Dashboard() {
     router.push('/');
   };
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
 
-  const url =
-    `/api/export/csv?from=${fromDate}` +
-    `&to=${toDate}` +
-    `&initData=${encodeURIComponent(initDataRaw)}`;
+ const res = await fetch(
+  `/api/export/csv?from=${fromDate}&to=${toDate}&initData=${encodeURIComponent(initDataRaw)}`
+ );
 
 
-  window.location.href = url;
+ const data =
+ await res.json();
+
+
+ if(data.url){
+
+   const tg =
+   window.Telegram?.WebApp as any;
+
+
+   tg?.openLink(
+     data.url
+   );
+
+ }
 
 };
 
