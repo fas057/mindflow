@@ -511,15 +511,64 @@ export default function Dashboard() {
     router.push('/');
   };
 
-  const exportCSV = () => {
-    const url = `/api/export/csv?from=${fromDate}&to=${toDate}`;
-    const tg = (window as any).Telegram?.WebApp;
-    if (tg?.openLink) {
-      tg.openLink(url);
-    } else {
-      window.open(url, '_blank');
-    }
-  };
+  const exportCSV = async () => {
+
+  const url =
+    `/api/export/csv?from=${fromDate}` +
+    `&to=${toDate}`;
+
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'x-telegram-init-data': initDataRaw,
+    },
+  });
+
+
+  if (!res.ok) {
+    const error = await res.json();
+    alert(error.error || 'Ошибка экспорта CSV');
+    return;
+  }
+
+
+  const blob = await res.blob();
+
+
+  const fileUrl =
+    URL.createObjectURL(blob);
+
+
+  const tg =
+    window.Telegram?.WebApp as any;
+
+
+  if (tg?.openLink) {
+
+    tg.openLink(fileUrl);
+
+  } else {
+
+    const a =
+      document.createElement('a');
+
+    a.href = fileUrl;
+    a.download =
+      `CBT_${fromDate}_${toDate}.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+  }
+
+
+  setTimeout(() => {
+    URL.revokeObjectURL(fileUrl);
+  }, 10000);
+
+};
 
   const exportPDF = () => {
     const url = `/api/export/pdf?from=${fromDate}&to=${toDate}`;
