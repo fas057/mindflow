@@ -10,8 +10,13 @@ async function getTelegramUser(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
   const initData =
-    request.headers.get('x-telegram-init-data') ||
-    searchParams.get('initData');
+ request.headers.get(
+  'x-telegram-init-data'
+) ||
+new URL(request.url)
+.searchParams.get(
+  'initData'
+);
 
 
   if (!initData) {
