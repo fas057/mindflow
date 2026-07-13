@@ -540,39 +540,37 @@ export default function Dashboard() {
 
   try {
 
-    const url =
-      `/api/export/pdf?from=${fromDate}` +
-      `&to=${toDate}` +
-      `&initData=${encodeURIComponent(initDataRaw)}`;
+    const apiUrl =
+      `/api/export/pdf?from=${fromDate}&to=${toDate}`;
 
 
-    const res =
-      await fetch(url);
+    const response =
+      await fetch(
+        apiUrl
+      );
 
 
     const data =
-      await res.json();
+      await response.json();
 
 
-    if (!res.ok) {
 
-      alert(
+    if(!response.ok){
+
+      throw new Error(
         data.error ||
-        'Ошибка экспорта PDF'
+        'Ошибка создания PDF'
       );
 
-      return;
     }
 
 
 
-    if (!data.url) {
+    if(!data.url){
 
-      alert(
-        'Ссылка на PDF не получена'
+      throw new Error(
+        'PDF ссылка не получена'
       );
-
-      return;
 
     }
 
@@ -585,13 +583,14 @@ export default function Dashboard() {
 
 
 
-    if (tg?.openLink) {
+    if(tg?.openLink){
 
       tg.openLink(
         data.url
       );
 
-    } else {
+    }
+    else{
 
       window.open(
         data.url,
@@ -602,15 +601,20 @@ export default function Dashboard() {
 
 
   }
-  catch(error) {
+  catch(error:any){
+
     console.error(
       'PDF EXPORT ERROR',
       error
     );
+
+
     alert(
-      'Ошибка создания PDF'
+      error.message
     );
+
   }
+
 };
 
   const chartData = entries
