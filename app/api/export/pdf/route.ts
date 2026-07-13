@@ -61,34 +61,40 @@ async function getTelegramUser(
 
 
 
+
 async function getProfileId(
-  telegramId:string
-) {
+ telegramId:string
+){
 
-  const {
-    data,
-    error
-  } =
-    await supabaseServer
-      .from('profiles')
-      .select('id')
-      .eq(
-        'telegram_id',
-        telegramId
-      )
-      .single();
-
-
-  if(error || !data){
-    throw new Error(
-      'Profile not found'
-    );
-  }
+ const {
+   data,
+   error
+ } =
+ await supabaseServer
+ .from('profiles')
+ .select('id')
+ .eq(
+   'telegram_id',
+   telegramId
+ )
+ .single();
 
 
-  return data.id;
+
+ if(error || !data){
+
+   throw new Error(
+    'Profile not found'
+   );
+
+ }
+
+
+ return data.id;
 
 }
+
+
 
 
 
@@ -98,19 +104,20 @@ export async function GET(
  request:NextRequest
 ){
 
+
 try{
 
 
  const telegramId =
-   await getTelegramUser(
-     request
-   );
+ await getTelegramUser(
+   request
+ );
 
 
  const profileId =
-   await getProfileId(
-     telegramId
-   );
+ await getProfileId(
+   telegramId
+ );
 
 
 
@@ -120,7 +127,6 @@ try{
  new URL(
    request.url
  );
-
 
 
  const from =
@@ -138,50 +144,52 @@ try{
 
  if(!from || !to){
 
-   return NextResponse.json(
-    {
-      error:'Period missing'
-    },
-    {
-      status:400
-    }
-   );
+  return NextResponse.json(
+   {
+    error:'Period missing'
+   },
+   {
+    status:400
+   }
+  );
 
  }
 
 
 
+
  const {
-   data:entries,
-   error
+  data:entries,
+  error
  } =
  await supabaseServer
  .from('diary_entries')
  .select('*')
  .eq(
-   'user_id',
-   profileId
+  'user_id',
+  profileId
  )
  .gte(
-   'entry_date',
-   from
+  'entry_date',
+  from
  )
  .lte(
-   'entry_date',
-   to
+  'entry_date',
+  to
  )
  .order(
-   'entry_date',
-   {
-    ascending:true
-   }
+  'entry_date',
+  {
+   ascending:true
+  }
  );
 
 
 
  if(error){
-   throw error;
+  throw error;
  }
+
 
 
 
@@ -205,6 +213,8 @@ try{
 
 
 
+
+
  const {
    error:uploadError
  } =
@@ -215,9 +225,9 @@ try{
    storagePath,
    pdfBuffer,
    {
-     contentType:
-       'application/pdf',
-     upsert:false
+    contentType:
+     'application/pdf',
+    upsert:false
    }
  );
 
@@ -230,28 +240,31 @@ try{
 
 
 
+
  const {
-   data:urlData
+  data:urlData
  } =
  supabaseServer
  .storage
  .from('exports')
  .getPublicUrl(
-   storagePath
+  storagePath
  );
 
 
 
+
  return NextResponse.json(
-  {
-    url:urlData.publicUrl
-  }
+ {
+  url:urlData.publicUrl
+ }
  );
 
 
 
 }
 catch(error:any){
+
 
  console.error(
   'PDF EXPORT ERROR',
@@ -260,24 +273,29 @@ catch(error:any){
 
 
  return NextResponse.json(
-  {
-    error:error.message
-  },
-  {
-    status:500
-  }
+ {
+  error:error.message
+ },
+ {
+  status:500
+ }
  );
 
-}
 
 }
 
 
+}
 
 
 
 
-async function generatePDF(
+
+
+
+
+
+function generatePDF(
  entries:any[],
  from:string,
  to:string
@@ -288,112 +306,136 @@ async function generatePDF(
  (resolve,reject)=>{
 
 
-  const doc =
-    new PDFDocument({
-      size:'A4',
-      margin:50
-    });
-
-
-  const chunks:Buffer[]=[];
-
-
-  doc.on(
-    'data',
-    chunk=>{
-      chunks.push(chunk);
-    }
-  );
-
-
-  doc.on(
-    'end',
-    ()=>{
-      resolve(
-        Buffer.concat(chunks)
-      );
-    }
-  );
-
-
-  doc.on(
-    'error',
-    reject
-  );
+ const chunks:Buffer[]=[];
 
 
 
-  doc.fontSize(18)
-  .text(
-    '📊 Отчёт КПТ-дневника',
-    {
-      align:'center'
-    }
-  );
-
-
-  doc.moveDown();
-
-
-  doc.fontSize(12)
-  .text(
-    `Период: ${from} — ${to}`
-  );
-
-
-  doc.text(
-    `Количество записей: ${entries.length}`
-  );
-
-
-  doc.moveDown();
+ const doc =
+ new PDFDocument({
+  size:'A4',
+  margin:40
+ });
 
 
 
-  doc.fontSize(14)
-  .text(
-    '📝 Последние записи'
-  );
+ doc.on(
+  'data',
+  (chunk)=>{
+    chunks.push(chunk);
+  }
+ );
 
 
-  doc.moveDown();
+ doc.on(
+  'end',
+  ()=>{
+
+   resolve(
+    Buffer.concat(chunks)
+   );
+
+  }
+ );
+
+
+ doc.on(
+  'error',
+  reject
+ );
 
 
 
-  entries
-  .slice(-15)
-  .forEach(
-    e=>{
 
 
-      doc.fontSize(11)
-      .text(
-`${e.entry_date}
+ doc
+ .fontSize(18)
+ .text(
+  'Отчёт КПТ-дневника',
+  {
+   align:'center'
+  }
+ );
+
+
+
+ doc.moveDown();
+
+
+
+ doc
+ .fontSize(12)
+ .text(
+  `Период: ${from} — ${to}`
+ );
+
+
+
+ doc.text(
+  `Количество записей: ${entries.length}`
+ );
+
+
+
+ doc.moveDown();
+
+
+
+ doc
+ .fontSize(15)
+ .text(
+  'Последние записи'
+ );
+
+
+
+ doc.moveDown();
+
+
+
+
+
+ entries
+ .slice(-15)
+ .forEach(
+ (e:any)=>{
+
+
+ doc
+ .fontSize(11)
+ .text(
+ `
+Дата: ${e.entry_date}
 
 Ситуация:
-${e.situation}
+${e.situation || '-'}
 
 Мысли:
-${e.thoughts}
+${e.thoughts || '-'}
+
+Эмоции:
+${e.emotions || '-'}
 
 Реакции:
-${e.reactions}
+${e.reactions || '-'}
 
 Настроение:
 ${e.mood ?? '-'}
 
-----------------------`
-      );
+-------------------------
+ `
+ );
 
 
-    }
-  );
+ }
+ );
 
 
 
-  doc.end();
+
+ doc.end();
 
 
  });
+
 
 }
