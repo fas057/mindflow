@@ -10,77 +10,85 @@ const TELEGRAM_BOT_TOKEN =
 
 
 async function getTelegramUser(
- request:NextRequest
-){
+  request: NextRequest
+) {
 
- const initData =
- request.headers.get(
-  'x-telegram-init-data'
- );
+  const { searchParams } =
+    new URL(request.url);
 
 
- if(!initData)
-  throw new Error(
-   'Missing init data'
+  const initData =
+    request.headers.get(
+      'x-telegram-init-data'
+    ) ||
+    searchParams.get(
+      'initData'
+    );
+
+
+  if (!initData) {
+    throw new Error(
+      'Missing init data'
+    );
+  }
+
+
+  await validate(
+    initData,
+    TELEGRAM_BOT_TOKEN
   );
 
 
- await validate(
-  initData,
-  TELEGRAM_BOT_TOKEN
- );
+  const parsed =
+    parse(initData);
 
 
- const parsed =
- parse(initData);
+  const telegramId =
+    parsed.user?.id;
 
 
- const id =
- parsed.user?.id;
+  if (!telegramId) {
+    throw new Error(
+      'User not found'
+    );
+  }
 
 
- if(!id)
-  throw new Error(
-   'User missing'
-  );
-
-
- return String(id);
+  return String(telegramId);
 
 }
-
 
 
 
 
 async function getProfileId(
- telegramId:string
-){
+  telegramId:string
+) {
 
- const {data,error}
- =
- await supabaseServer
- .from('profiles')
- .select('id')
- .eq(
-  'telegram_id',
-  telegramId
- )
- .single();
-
-
-
- if(error || !data)
-  throw new Error(
-   'Profile not found'
-  );
+  const {
+    data,
+    error
+  } =
+    await supabaseServer
+      .from('profiles')
+      .select('id')
+      .eq(
+        'telegram_id',
+        telegramId
+      )
+      .single();
 
 
- return data.id;
+  if(error || !data){
+    throw new Error(
+      'Profile not found'
+    );
+  }
+
+
+  return data.id;
 
 }
-
-
 
 
 
@@ -94,391 +102,156 @@ try{
 
 
  const telegramId =
- await getTelegramUser(
-  request
- );
+   await getTelegramUser(
+     request
+   );
 
 
  const profileId =
- await getProfileId(
-  telegramId
- );
+   await getProfileId(
+     telegramId
+   );
 
 
 
- const {searchParams}
- =
+ const {
+   searchParams
+ } =
  new URL(
-  request.url
+   request.url
  );
 
 
 
  const from =
  searchParams.get(
-  'from'
+   'from'
  );
 
 
  const to =
  searchParams.get(
-  'to'
+   'to'
  );
 
 
 
- if(!from || !to)
- {
+ if(!from || !to){
 
-  return NextResponse.json(
-   {
-    error:'Period missing'
-   },
-   {
-    status:400
-   }
-  );
+   return NextResponse.json(
+    {
+      error:'Period missing'
+    },
+    {
+      status:400
+    }
+   );
 
  }
 
 
 
+ const {
+   data:entries,
+   error
+ } =
+ await supabaseServer
+ .from('diary_entries')
+ .select('*')
+ .eq(
+   'user_id',
+   profileId
+ )
+ .gte(
+   'entry_date',
+   from
+ )
+ .lte(
+   'entry_date',
+   to
+ )
+ .order(
+   'entry_date',
+   {
+    ascending:true
+   }
+ );
 
 
-/*
- Получаем готовый отчет
-*/
 
-
-const {data:report,error}
-=
-await supabaseServer
-.from('period_reports')
-.select('*')
-.eq(
- 'user_id',
- profileId
-)
-.eq(
- 'date_from',
- from
-)
-.eq(
- 'date_to',
- to
-)
-.single();
+ if(error){
+   throw error;
+ }
 
 
 
-if(error || !report)
-{
+ const pdfBuffer =
+ await generatePDF(
+   entries || [],
+   from,
+   to
+ );
+
+
+
+
+ const fileName =
+ `CBT_${from}_${to}.pdf`;
+
+
+
+ const storagePath =
+ `exports/${crypto.randomUUID()}-${fileName}`;
+
+
+
+ const {
+   error:uploadError
+ } =
+ await supabaseServer
+ .storage
+ .from('exports')
+ .upload(
+   storagePath,
+   pdfBuffer,
+   {
+     contentType:
+       'application/pdf',
+     upsert:false
+   }
+ );
+
+
+
+ if(uploadError){
+   throw uploadError;
+ }
+
+
+
+
+ const {
+   data:urlData
+ } =
+ supabaseServer
+ .storage
+ .from('exports')
+ .getPublicUrl(
+   storagePath
+ );
+
+
 
  return NextResponse.json(
   {
-   error:
-   'Report not found. Run analysis first.'
-  },
-  {
-   status:404
+    url:urlData.publicUrl
   }
  );
 
-}
-
-
-
-
-
-/*
- Последние записи
-*/
-
-
-const {data:entries}
-=
-await supabaseServer
-.from('diary_entries')
-.select('*')
-.eq(
- 'user_id',
- profileId
-)
-.gte(
- 'entry_date',
- from
-)
-.lte(
- 'entry_date',
- to
-)
-.order(
- 'entry_date',
- {
-  ascending:false
- }
-)
-.limit(10);
-
-
-
-
-
-const doc =
-new PDFDocument({
- size:'A4',
- margin:50
-});
-
-
-
-const chunks:Buffer[]=[];
-
-
-
-doc.on(
- 'data',
- chunk=>chunks.push(chunk)
-);
-
-
-
-const finished =
-new Promise<Buffer>((resolve) => {
-
-  doc.on(
-   'end',
-   ()=>{
-    resolve(
-     Buffer.concat(chunks)
-    );
-   }
-  );
-
- }
-);
-
-
-
-
-
-
-/*
- PDF CONTENT
-*/
-
-
-
-doc
-.fontSize(20)
-.text(
- 'КПТ-дневник — отчет',
- {
-  align:'center'
- }
-);
-
-
-doc.moveDown();
-
-
-
-doc.fontSize(12)
-.text(
- `Период: ${from} — ${to}`
-);
-
-
-doc.text(
- `Количество записей: ${report.entries_count}`
-);
-
-
-
-if(report.average_mood)
-{
-
- doc.text(
-  `Среднее настроение: ${report.average_mood}/10`
- );
-
-}
-
-
-
-doc.moveDown();
-
-
-
-doc.fontSize(15)
-.text(
- 'Топ эмоции'
-);
-
-
-
-doc.fontSize(12);
-
-
-
-if(
- report.top_emotions &&
- report.top_emotions.length
-)
-{
-
- report.top_emotions.forEach(
-  (e:any,index:number)=>{
-
-   doc.text(
-    `${index+1}. ${e.name} — ${e.count} раз (ср. ${e.avgIntensity})`
-   );
-
-  }
- );
-
-}
-else
-{
-
- doc.text(
-  'Нет данных'
- );
-
-}
-
-
-
-
-doc.moveDown();
-
-
-
-doc.fontSize(15)
-.text(
- 'Анализ GigaChat'
-);
-
-
-
-doc.fontSize(12);
-
-
-
-const analysis =
-report.giga_analysis || {};
-
-
-
-doc.text(
- `Динамика: ${analysis.dynamics || '-'}`
-);
-
-
-doc.text(
- `Резюме: ${analysis.summary || '-'}`
-);
-
-
-doc.text(
- `Рекомендация: ${analysis.recommendation || '-'}`
-);
-
-
-
-if(analysis.alert)
-{
-
- doc.moveDown();
-
- doc.text(
-  '⚠ Требуется дополнительное внимание',
-  {
-   underline:true
-  }
- );
-
-}
-
-
-
-
-doc.moveDown();
-
-
-
-doc.fontSize(15)
-.text(
- 'Последние записи'
-);
-
-
-
-doc.fontSize(11);
-
-
-
-entries?.forEach(
- (e:any)=>{
-
-
-  doc.moveDown(0.5);
-
-
-  doc.text(
-   `${e.entry_date}`
-  );
-
-
-  doc.text(
-   `Ситуация: ${e.situation}`
-  );
-
-
-  doc.text(
-   `Мысли: ${e.thoughts}`
-  );
-
-
-  doc.text(
-   `Эмоции: ${e.emotions || '-'}`
-  );
-
-
- }
-
-);
-
-
-
-
-
-doc.end();
-
-
-
-
-const pdf = await finished;
-
-return new NextResponse(
-  new Uint8Array(pdf),
-  {
-    status: 200,
-
-    headers: {
-      'Content-Type': 'application/pdf',
-
-      'Content-Disposition':
-        `attachment; filename="CBT_${from}_${to}.pdf"`
-    }
-  }
-);
-
 
 
 }
-catch(error:any)
-{
+catch(error:any){
 
  console.error(
   'PDF EXPORT ERROR',
@@ -486,16 +259,141 @@ catch(error:any)
  );
 
 
-return NextResponse.json(
- {
-  error:error.message
- },
- {
-  status:500
- }
-);
-
+ return NextResponse.json(
+  {
+    error:error.message
+  },
+  {
+    status:500
+  }
+ );
 
 }
+
+}
+
+
+
+
+
+
+async function generatePDF(
+ entries:any[],
+ from:string,
+ to:string
+):Promise<Buffer>{
+
+
+ return new Promise(
+ (resolve,reject)=>{
+
+
+  const doc =
+    new PDFDocument({
+      size:'A4',
+      margin:50
+    });
+
+
+  const chunks:Buffer[]=[];
+
+
+  doc.on(
+    'data',
+    chunk=>{
+      chunks.push(chunk);
+    }
+  );
+
+
+  doc.on(
+    'end',
+    ()=>{
+      resolve(
+        Buffer.concat(chunks)
+      );
+    }
+  );
+
+
+  doc.on(
+    'error',
+    reject
+  );
+
+
+
+  doc.fontSize(18)
+  .text(
+    '📊 Отчёт КПТ-дневника',
+    {
+      align:'center'
+    }
+  );
+
+
+  doc.moveDown();
+
+
+  doc.fontSize(12)
+  .text(
+    `Период: ${from} — ${to}`
+  );
+
+
+  doc.text(
+    `Количество записей: ${entries.length}`
+  );
+
+
+  doc.moveDown();
+
+
+
+  doc.fontSize(14)
+  .text(
+    '📝 Последние записи'
+  );
+
+
+  doc.moveDown();
+
+
+
+  entries
+  .slice(-15)
+  .forEach(
+    e=>{
+
+
+      doc.fontSize(11)
+      .text(
+`${e.entry_date}
+
+Ситуация:
+${e.situation}
+
+Мысли:
+${e.thoughts}
+
+Реакции:
+${e.reactions}
+
+Настроение:
+${e.mood ?? '-'}
+
+----------------------`
+      );
+
+
+    }
+  );
+
+
+
+  doc.end();
+
+
+ });
 
 }

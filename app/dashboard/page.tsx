@@ -536,15 +536,82 @@ export default function Dashboard() {
 
 };
 
-  const exportPDF = () => {
-    const url = `/api/export/pdf?from=${fromDate}&to=${toDate}`;
-    const tg = (window as any).Telegram?.WebApp;
-    if (tg?.openLink) {
-      tg.openLink(url);
-    } else {
-      window.open(url, '_blank');
+  const exportPDF = async () => {
+
+  try {
+
+    const url =
+      `/api/export/pdf?from=${fromDate}` +
+      `&to=${toDate}` +
+      `&initData=${encodeURIComponent(initDataRaw)}`;
+
+
+    const res =
+      await fetch(url);
+
+
+    const data =
+      await res.json();
+
+
+    if (!res.ok) {
+
+      alert(
+        data.error ||
+        'Ошибка экспорта PDF'
+      );
+
+      return;
     }
-  };
+
+
+
+    if (!data.url) {
+
+      alert(
+        'Ссылка на PDF не получена'
+      );
+
+      return;
+
+    }
+
+
+
+    const tg =
+      (window as any)
+      .Telegram
+      ?.WebApp;
+
+
+
+    if (tg?.openLink) {
+
+      tg.openLink(
+        data.url
+      );
+
+    } else {
+
+      window.open(
+        data.url,
+        '_blank'
+      );
+
+    }
+
+
+  }
+  catch(error) {
+    console.error(
+      'PDF EXPORT ERROR',
+      error
+    );
+    alert(
+      'Ошибка создания PDF'
+    );
+  }
+};
 
   const chartData = entries
     .filter(
