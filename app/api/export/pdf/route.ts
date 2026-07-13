@@ -122,23 +122,15 @@ export async function GET(request: NextRequest) {
       moodTrend,
     });
 
+    // Возвращаем PDF напрямую
     const fileName = `CBT_${from}_${to}.pdf`;
-    const storagePath = `exports/${crypto.randomUUID()}-${fileName}`;
-
-    const { error: uploadError } = await supabaseServer.storage
-      .from('exports')
-      .upload(storagePath, pdfBuffer, {
-        contentType: 'application/pdf',
-        upsert: false,
-      });
-
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabaseServer.storage
-      .from('exports')
-      .getPublicUrl(storagePath);
-
-    return NextResponse.json({ url: urlData.publicUrl });
+    return new NextResponse(new Uint8Array(pdfBuffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
+        'Cache-Control': 'no-cache',
+      },
+    });
   } catch (error: any) {
     console.error('PDF EXPORT ERROR', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -162,31 +154,27 @@ function generatePDF(report: {
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
 
-    // Цветовая схема
-    const primaryColor: [number, number, number] = [99, 102, 241]; // индиго-500
-    const lightBg: [number, number, number] = [238, 242, 255];   // indigo-50
+    const primaryColor: [number, number, number] = [99, 102, 241];
     const textDark: [number, number, number] = [30, 41, 59];
     const textGray: [number, number, number] = [100, 116, 139];
     const white: [number, number, number] = [255, 255, 255];
 
-    // Шрифт
     const fontPath = path.join(process.cwd(), 'public/fonts/DejaVuSans.ttf');
     const font = fs.readFileSync(fontPath).toString('base64');
     doc.addFileToVFS('DejaVuSans.ttf', font);
     doc.addFont('DejaVuSans.ttf', 'DejaVuSans', 'normal');
     doc.setFont('DejaVuSans');
 
-    // Вспомогательные функции
     const addHeader = () => {
-  doc.setFillColor(...primaryColor);
-  doc.rect(0, 0, pageWidth, 40, 'F');
-  doc.setFontSize(22);
-  doc.setTextColor(...white);
-  doc.text('🧠 СМЭР-отчёт', pageWidth / 2, 20, { align: 'center' });
-  doc.setFontSize(11);
-  doc.text(`Период: ${from} — ${to}`, pageWidth / 2, 32, { align: 'center' });
-  doc.setTextColor(0, 0, 0); // возврат чёрного цвета
-};
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      doc.setFontSize(22);
+      doc.setTextColor(...white);
+      doc.text('🧠 КПТ-отчёт', pageWidth / 2, 20, { align: 'center' });
+      doc.setFontSize(11);
+      doc.text(`Период: ${from} — ${to}`, pageWidth / 2, 32, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+    };
 
     const checkPage = (neededSpace: number) => {
       if (y + neededSpace > pageHeight - 20) {
@@ -197,13 +185,8 @@ function generatePDF(report: {
       }
     };
 
-    const drawCard = (x: number, y: number, w: number, h: number, bgColor: [number, number, number] = white) => {
-      doc.setFillColor(...bgColor);
-      doc.roundedRect(x, y, w, h, 2, 2, 'F');
-    };
-
     const drawProgressBar = (x: number, y: number, w: number, h: number, percent: number) => {
-      doc.setFillColor(230, 234, 242); // фон
+      doc.setFillColor(230, 234, 242);
       doc.roundedRect(x, y, w, h, 1, 1, 'F');
       const fillWidth = Math.max(0, (w * Math.min(percent, 1)));
       if (fillWidth > 0) {
@@ -215,7 +198,7 @@ function generatePDF(report: {
     addHeader();
     let y = 50;
 
-    // --- Сводка ---
+    // Сводка
     checkPage(60);
     doc.setFontSize(16);
     doc.setTextColor(...primaryColor);
@@ -239,7 +222,7 @@ function generatePDF(report: {
       y += 14;
     });
 
-    // --- Топ эмоций ---
+    // Топ эмоций
     y += 5;
     checkPage(20 + topEmotions.length * 16);
     doc.setFontSize(16);
@@ -268,7 +251,7 @@ function generatePDF(report: {
       });
     }
 
-    // --- Записи ---
+    // Записи
     y += 8;
     checkPage(30);
     doc.setFontSize(16);
@@ -295,8 +278,8 @@ function generatePDF(report: {
       const estimatedHeight = lines.length * 8 + 12;
       checkPage(estimatedHeight);
 
-      // Карточка записи
-      drawCard(12, y, 186, estimatedHeight, [248, 250, 252]);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(12, y, 186, estimatedHeight, 2, 2, 'F');
       doc.setTextColor(...textDark);
       doc.setFontSize(9);
       lines.forEach((line, i) => {
@@ -318,7 +301,6 @@ function generatePDF(report: {
   });
 }
 
-// Вспомогательная функция для иконок эмоций (можно расширить)
 function getEmotionEmoji(name: string): string {
   const map: Record<string, string> = {
     радость: '😊', грусть: '😢', гнев: '😠', страх: '😨', удивление: '😲',
