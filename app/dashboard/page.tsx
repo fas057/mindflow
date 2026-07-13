@@ -1216,12 +1216,7 @@ if (tg?.openLink) {
                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition-colors text-sm"
                   />
                 </div>
-                <button
-                  onClick={handleAnalyzePeriod}
-                  className="px-4 py-2 text-sm font-medium text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition-colors"
-                >
-                  📊 ИИ-Анализ
-                </button>
+                
                 <button
                   onClick={exportPDF}
                   className="px-4 py-2 text-sm font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 transition-colors"
@@ -1237,17 +1232,7 @@ if (tg?.openLink) {
               </div>
             </div>
 
-            {periodAnalysis && (
-              <div className="bg-indigo-50/50 border border-indigo-200 rounded-2xl p-4">
-                <h3 className="font-semibold text-gray-800">📋 Итоговый анализ</h3>
-                <p className="text-sm"><span className="font-medium">Динамика:</span> {periodAnalysis.dynamics}</p>
-                <p className="text-sm"><span className="font-medium">Резюме:</span> {periodAnalysis.summary}</p>
-                <p className="text-sm"><span className="font-medium">Рекомендация:</span> {periodAnalysis.recommendation}</p>
-                {periodAnalysis.alert && (
-                  <p className="mt-2 text-red-600 font-bold text-sm">⚠️ Рекомендуется обратиться к терапевту.</p>
-                )}
-              </div>
-            )}
+            
           </div>
         </div>
       </div>
