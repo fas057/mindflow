@@ -182,7 +182,7 @@ function generatePDF(report: {
   doc.rect(0, 0, pageWidth, 40, 'F');
   doc.setFontSize(22);
   doc.setTextColor(...white);
-  doc.text('🧠 КПТ-отчёт', pageWidth / 2, 20, { align: 'center' });
+  doc.text('🧠 СМЭР-отчёт', pageWidth / 2, 20, { align: 'center' });
   doc.setFontSize(11);
   doc.text(`Период: ${from} — ${to}`, pageWidth / 2, 32, { align: 'center' });
   doc.setTextColor(0, 0, 0); // возврат чёрного цвета
