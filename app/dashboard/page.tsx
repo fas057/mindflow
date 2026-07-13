@@ -540,14 +540,48 @@ export default function Dashboard() {
 
   try {
 
+
+    const tg =
+      (window as any)
+      .Telegram
+      ?.WebApp;
+
+
+
+    const initData =
+      tg?.initData;
+
+
+
+    if(!initData){
+
+      throw new Error(
+        'Telegram initData отсутствует'
+      );
+
+    }
+
+
+
+
     const apiUrl =
       `/api/export/pdf?from=${fromDate}&to=${toDate}`;
 
 
+
     const response =
       await fetch(
-        apiUrl
+        apiUrl,
+        {
+
+          headers:{
+            'x-telegram-init-data':
+              initData
+          }
+
+        }
       );
+
 
 
     const data =
@@ -569,17 +603,10 @@ export default function Dashboard() {
     if(!data.url){
 
       throw new Error(
-        'PDF ссылка не получена'
+        'PDF ссылка отсутствует'
       );
 
     }
-
-
-
-    const tg =
-      (window as any)
-      .Telegram
-      ?.WebApp;
 
 
 
@@ -614,6 +641,7 @@ export default function Dashboard() {
     );
 
   }
+
 
 };
 
